@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- social:start -->
+<meta name="description" content="Session 1 of 6. Two numbers in a row are not a location until the reference system is named. WGS 84 degrees against SVY21 metres (EPSG:3414), what one degree is worth at 1 deg N, the axis-order swap that sends every MRT exit 9,531 km away, and the range check that catches it. Real Singapore open data, a constructed town-council data desk.">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Learn with Phoebe">
+<meta property="og:title" content="Where is this row? - learn geospatial data with phoebe">
+<meta property="og:description" content="Session 1 of 6. A coordinate without its reference system is a claim, not a place. Degrees, metres, axis order, and the check that catches the swap.">
+<meta property="og:url" content="https://phoebefu6.github.io/learn-geospatial-with-phoebe/courses/01-where-is-this-row.html">
+<meta property="og:image" content="https://phoebefu6.github.io/learn-geospatial-with-phoebe/assets/og-cover.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Where is this row? - learn geospatial data with phoebe">
+<meta name="twitter:description" content="Session 1 of 6. WGS 84 against SVY21, one degree at 1 deg N, and the swap test.">
+<meta name="twitter:image" content="https://phoebefu6.github.io/learn-geospatial-with-phoebe/assets/og-cover.png">
+<!-- social:end -->
+<title>Session 1 · Where is this row? - learn geospatial data with phoebe</title>
+<link rel="stylesheet" href="../assets/style.css?v=2">
+</head>
+<body>
+
+<div class="toolbar">
+  <div class="wrap">
+    <span class="crumb"><a href="../index.html">learn-geospatial-with-phoebe</a> / Session 1 of 6</span>
+    <button class="btn" id="toggle-all" type="button">Expand all</button>
+    <button class="btn primary" id="zoom-toggle" type="button">Projector zoom: off</button>
+  </div>
+</div>
+
+<header class="masthead">
+  <div class="wrap">
+    <div class="eyebrow">Learn Geospatial Data with Phoebe · Session 1 of 6</div>
+    <h1>Where <span class="accent">is</span> this row?</h1>
+    <p class="sub">A row with 103.80618 in one column and 1.29425 in the other looks like a place. It is a claim. Behind it sit three things that can each be wrong without an error message: the reference system that says what the numbers mean, the boundary that will later turn the point into a zone, and the formula that will turn two points into a distance. Tonight is the first of the three. We read a real file of 613 MRT station exits, name the system its numbers live in, write the same row in Singapore's own metre grid, and run the one check that catches the commonest mistake in any table with a latitude column: the two numbers in the wrong order.</p>
+    <div class="chip-row">
+      <span class="chip level">🟢 Foundations</span>
+      <span class="chip audience">Anyone with a table that has a latitude column</span>
+      <span class="chip audience">Python standard library only</span>
+      <span class="chip time">45 min</span>
+    </div>
+    <div class="agenda">
+      <span class="a1" style="flex:1">0-3 · Welcome</span>
+      <span class="a2" style="flex:4">3-18 · Systems, degrees, axis order</span>
+      <span class="a3" style="flex:5">18-40 · Build-along: one row, two systems</span>
+      <span class="a4" style="flex:1">40-45 · Q&amp;A</span>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <section class="section" id="intro">
+    <div class="section-kicker">
+      <span class="klabel">Part 0</span>
+      <h2>Where we start</h2>
+    </div>
+    <p class="lede">The running case is constructed. Rivermont is an invented town-council data desk: Mei runs it, Arif is the estates officer who brings the questions, Priya is the general manager who signs off. Nothing about Rivermont is a measurement. Everything the desk works on is real: Singapore open data from data.gov.sg (URA Master Plan 2019 subzones, LTA MRT station exits, NEA dengue clusters, SingStat Census 2020 population), accessed 2026-10-22 under the Singapore Open Data Licence v1.0. Arif's first question is plain: "How far is each estate from its nearest MRT exit?" Before anyone can answer it, Mei has to know what the numbers in the exits file are.</p>
+
+    <div class="legend">
+      <span class="pill">🎫 Clear all three quiz questions to stamp your passport</span>
+      <span class="pill">Live = presented in the 45 minutes</span>
+      <span class="pill">Self-study = the full depth, after class</span>
+      <span class="pill">★ Build-along = run it yourself</span>
+    </div>
+
+    <div class="callout win">
+      <p><strong>★ What you walk out with tonight.</strong> A one-line habit (no coordinate leaves your hands without its reference system), the two systems every Singapore dataset arrives in and how to tell them apart at a glance, a working function that turns degrees into SVY21 metres with a control point that proves it, and a range check you can paste at the top of any pipeline that touches a latitude.</p>
+    </div>
+  </section>
+
+  <section class="section" id="part-1">
+    <div class="section-kicker">
+      <span class="klabel">Part 1 · covers a coordinate is a claim with a reference system</span>
+      <h2>Two numbers are not a place</h2>
+      <span class="tag concept">5 min live</span>
+    </div>
+    <p class="lede">A coordinate reference system (CRS) is the rule that turns numbers into a position: which shape of the Earth, which origin, which units, which axis comes first. The exits file carries pairs like [103.80618, 1.29425]. Those are degrees on the WGS 84 ellipsoid, longitude first, because that is what GeoJSON means when it says nothing. Singapore's land survey uses a different rule: SVY21, EPSG:3414, metres east and north of an origin near the middle of the island. The same exit is (24,979.7, 30,737.1) there. Neither pair is "the location". Each is the location under a named rule, and the rule travels with the number or the number is noise.</p>
+
+    <figure class="zoomable">
+      <svg viewBox="0 0 880 320" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="One row from the MRT exits file at the top, with two arrows down to two panels. Left panel: a graticule of converging meridians and parallels with the exit as a dot, labelled latitude 1.29425 and longitude 103.80618, two angles on the WGS 84 ellipsoid. Right panel: a flat square grid with the same exit as a dot, labelled easting 24,979.7 and northing 30,737.1 metres from an origin at 1 degree 22 minutes north, 103 degrees 50 minutes east. The note says the row is a location only under a named rule.">
+        <defs>
+          <filter id="f1aSk" x="-3%" y="-3%" width="106%" height="106%"><feTurbulence type="fractalNoise" baseFrequency="0.02" numOctaves="2" seed="11" result="n"/><feDisplacementMap in="SourceGraphic" in2="n" scale="2.4" xChannelSelector="R" yChannelSelector="G"/></filter>
+          <marker id="f1aAr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M1 1 L9 5 L1 9" fill="none" stroke="#1C1214" stroke-width="1.6" stroke-linecap="round"/></marker>
+        </defs>
+        <style>
+          .f1aH { font: 800 12px Inter, sans-serif; fill: #1C1214; }
+          .f1aL { font: 600 12px Inter, sans-serif; fill: #1C1214; }
+          .f1aS { font: 400 11px Inter, sans-serif; fill: #5F4D50; }
+          .f1aB { font: 800 11px Inter, sans-serif; fill: #8E0C22; }
+          .f1aA { font: 700 11px Inter, sans-serif; fill: #C8102E; }
+          .f1aN { font: 400 12px Inter, sans-serif; fill: #5F4D50; }
+        </style>
+
+        <text class="f1aH" x="30" y="26">ONE ROW, TWO REFERENCE SYSTEMS, ONE EXIT</text>
+
+        <g filter="url(#f1aSk)" fill="none" stroke="#1C1214" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="40" y="42" width="800" height="32" rx="8" transform="rotate(-0.3 440 58)" fill="#FFFFFF"/>
+          <path d="M230 78 L230 92" marker-end="url(#f1aAr)"/>
+          <path d="M650 78 L650 92" marker-end="url(#f1aAr)"/>
+          <rect x="40" y="96" width="380" height="176" rx="10" transform="rotate(0.4 230 184)" fill="#FFFFFF"/>
+          <rect x="460" y="96" width="380" height="176" rx="10" transform="rotate(-0.4 650 184)" fill="#FDF0F1"/>
+          <path d="M104 128 L100 216 M230 128 L230 216 M356 128 L360 216" stroke="#5F4D50" stroke-width="1.2"/>
+          <path d="M72 150 Q230 144 388 150 M70 183 L390 183 M68 216 Q230 222 392 216" stroke="#5F4D50" stroke-width="1.2"/>
+          <path d="M520 128 L520 216 M600 128 L600 216 M680 128 L680 216 M760 128 L760 216 M500 150 L800 150 M500 183 L800 183 M500 216 L800 216" stroke="#5F4D50" stroke-width="1.2"/>
+          <circle cx="230" cy="172" r="6" fill="#EF3340"/>
+          <circle cx="650" cy="172" r="6" fill="#EF3340"/>
+        </g>
+
+        <text class="f1aL" x="56" y="62">Row 1 of the exits file:  [103.80618, 1.29425]   QUEENSTOWN MRT STATION, Exit A</text>
+        <text class="f1aA" x="56" y="116">WGS 84 · EPSG:4326 · degrees</text>
+        <text class="f1aA" x="476" y="116">SVY21 · EPSG:3414 · metres</text>
+        <text class="f1aL" x="230" y="242" text-anchor="middle">latitude 1.29425 N, longitude 103.80618 E</text>
+        <text class="f1aS" x="230" y="260" text-anchor="middle">two angles on the WGS 84 ellipsoid, longitude first</text>
+        <text class="f1aL" x="650" y="242" text-anchor="middle">easting 24,979.7   northing 30,737.1</text>
+        <text class="f1aS" x="650" y="260" text-anchor="middle">metres from an origin at 1 deg 22' N, 103 deg 50' E</text>
+
+        <text class="f1aN" x="30" y="302">Same exit, two true descriptions. Without the tag that says which rule applies, the row is two numbers.</text>
+      </svg>
+      <figcaption>🔍 Click to zoom - the dot is the same exit twice; what changed is the rule, and the rule is the part most files leave out</figcaption>
+    </figure>
+
+    <details class="card" open>
+      <summary><span class="mode live">Live</span>WGS 84 and the code that names it<span class="mini">3 min</span><span class="caret">▶</span></summary>
+      <div class="body">
+        <p>Latitude and longitude are angles, and an angle needs a shape to be measured on. WGS 84 is the ellipsoid behind satellite positioning: semi-major axis 6,378,137 m, flattening 1/298.257223563. The EPSG registry gives every reference system a number so that software can name it without ambiguity; WGS 84 degrees are EPSG:4326. GeoJSON, the format the exits file uses, does not carry a system name at all. It fixes one by convention: WGS 84, and coordinates written longitude first. The file Mei opened has no <code>crs</code> member, so the convention is the rule, and the first thing she writes in the desk's notes is "exits: EPSG:4326, [long, lat]".</p>
+        <p>That line is the habit of the session. A coordinate that arrives without its system is not wrong, it is unverified, and the fix is cheap when the file is open and expensive after the numbers have been joined, summed and put on a map.</p>
+      </div>
+    </details>
+
+    <details class="card">
+      <summary><span class="mode self">Self-study</span>SVY21: Singapore's metre grid, and the control point that proves a conversion<span class="mini">4 min</span><span class="caret">▶</span></summary>
+      <div class="body">
+        <p>SVY21 / Singapore TM is EPSG:3414, read in the EPSG registry: a transverse Mercator projection with its natural origin at 1 deg 22' N, 103 deg 50' E, scale factor 1, false easting 28,001.642 m and false northing 38,744.572 m, on the WGS 84 ellipsoid (the SVY21 datum, EPSG:4757). Its area of use is Singapore onshore and offshore, 1.13 to 1.47 N and 103.59 to 104.07 E, and the registry remarks that for cadastral purposes it replaced the Kertau 1968 Singapore Grid (EPSG:24500) from August 2004. The axis order in the registry is northing then easting, which is a second place the two numbers can be swapped.</p>
+        <p>A projection's definition gives you a free test. The natural origin maps to exactly the false easting and false northing: feed (103 deg 50' E, 1 deg 22' N) into your function and it must return (28,001.642, 38,744.572) to the millimetre. The engine behind session 6 runs that test on every page load and fails loudly if a parameter is off by one metre. A second, independent series implementation agreed with it on all 945 shipped points to under a micrometre. That is what "verified" means for a conversion: not that the numbers look plausible, but that a point whose answer is known by definition comes out right.</p>
+      </div>
+    </details>
+
+    <div class="callout example">
+      <span class="ex-pill">Real world</span>
+      <p><strong>Two exports, both labelled X and Y.</strong> A familiar pattern at any data desk: one team exports from a survey system in SVY21 metres, another from a web form in degrees, and both spreadsheets have columns called X and Y. Joined on an address, the table looks fine. Mapped, half the points sit in the Indian Ocean. The error is not in either export. It is in the join, where a system name was never asked for because the column headers looked the same.</p>
+    </div>
+  </section>
+
+  <section class="section" id="part-2">
+    <div class="section-kicker">
+      <span class="klabel">Part 2 · covers what a degree is worth at 1 deg N</span>
+      <h2>A degree is an angle, not a length</h2>
+      <span class="tag concept">5 min live</span>
+    </div>
+    <p class="lede">The tempting shortcut is to treat degrees as a flat grid and multiply by one constant. The constant most people reach for is 111,320 m: the length of one degree of longitude at the equator, 2 pi times 6,378,137 m divided by 360. It is almost right in Singapore for two reasons that both stop being true as you move north, and the mechanism is one cosine.</p>
+
+    <figure class="zoomable">
+      <svg viewBox="0 0 880 330" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="A wedge of the globe: two meridians rise from the equator and converge at the pole. Three parallels are drawn across the wedge: the equator, where one degree of longitude is 111.32 km; 1 degree 22 minutes north, 111.29 km; and 60 degrees north, 55.66 km, half as wide. Along the left meridian a label says one degree of latitude is 110.57 km near the equator, a meridian arc. The note says raw degrees multiply both axes by 111,320 m.">
+        <defs>
+          <filter id="f1bSk" x="-3%" y="-3%" width="106%" height="106%"><feTurbulence type="fractalNoise" baseFrequency="0.02" numOctaves="2" seed="23" result="n"/><feDisplacementMap in="SourceGraphic" in2="n" scale="2.4" xChannelSelector="R" yChannelSelector="G"/></filter>
+          <pattern id="f1bHc" patternUnits="userSpaceOnUse" width="7" height="7" patternTransform="rotate(-38)"><line x1="0" y1="0" x2="0" y2="7" stroke="#C8102E" stroke-width="1" opacity=".5"/></pattern>
+        </defs>
+        <style>
+          .f1bH { font: 800 12px Inter, sans-serif; fill: #1C1214; }
+          .f1bL { font: 600 12px Inter, sans-serif; fill: #1C1214; }
+          .f1bS { font: 400 11px Inter, sans-serif; fill: #5F4D50; }
+          .f1bB { font: 800 11px Inter, sans-serif; fill: #8E0C22; }
+          .f1bV { font: 800 13px Inter, sans-serif; fill: #8E0C22; }
+          .f1bA { font: 700 11px Inter, sans-serif; fill: #C8102E; }
+          .f1bN { font: 400 12px Inter, sans-serif; fill: #5F4D50; }
+        </style>
+
+        <text class="f1bH" x="30" y="26">WHAT ONE DEGREE IS WORTH, AND WHERE</text>
+
+        <g filter="url(#f1bSk)" fill="none" stroke="#1C1214" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M300 270 L440 56 L580 270" />
+          <path d="M300 270 L580 270" stroke-width="2.6"/>
+          <path d="M312 250 L568 250" stroke="#C8102E" stroke-width="2.4"/>
+          <path d="M372 160 L508 160" stroke="#C8102E" stroke-width="2.4"/>
+          <rect x="372" y="160" width="136" height="90" fill="url(#f1bHc)" stroke="none"/>
+          <circle cx="440" cy="56" r="5" fill="#FFFFFF"/>
+        </g>
+
+        <text class="f1bA" x="440" y="44" text-anchor="middle">pole</text>
+        <text class="f1bL" x="600" y="164">60 deg N</text>
+        <text class="f1bV" x="600" y="180">55.66 km per degree of longitude</text>
+        <text class="f1bL" x="600" y="236">1 deg 22' N (Singapore)</text>
+        <text class="f1bV" x="600" y="252">111.29 km per degree of longitude</text>
+        <text class="f1bL" x="600" y="274">equator</text>
+        <text class="f1bV" x="600" y="290">111.32 km per degree of longitude</text>
+        <text class="f1bL" x="40" y="186">one degree of latitude</text>
+        <text class="f1bV" x="40" y="202">110.57 km near the equator</text>
+        <text class="f1bS" x="40" y="218">a meridian arc on the ellipsoid, not 111.32</text>
+        <text class="f1bB" x="600" y="130">width = 111.32 km x cos(latitude)</text>
+
+        <text class="f1bN" x="30" y="312">Raw degrees multiply both axes by 111,320 m: 0.7% long on latitude here, and 2x long on longitude at 60 deg N.</text>
+      </svg>
+      <figcaption>🔍 Click to zoom - the hatched band is the stretch of the wedge where "one constant" starts to lie; Singapore sits almost at the bottom of it</figcaption>
+    </figure>
+
+    <details class="card">
+      <summary><span class="mode live">Live</span>Why the shortcut almost works here<span class="mini">3 min</span><span class="caret">▶</span></summary>
+      <div class="body">
+        <p>A degree of longitude is 111.32 km at the equator and shrinks by cos(latitude) as you go north: at 1 deg 22' N the cosine is 0.99972, so a degree is 111.29 km, 30 m short of the constant. A degree of latitude is a different length again, about 110.57 km near the equator, because the Earth is flattened and a meridian arc near the equator is shorter than a parallel. So the constant 111,320 is 0.03% long on east-west distances in Singapore and 0.7% long on north-south ones. Across the island's roughly 50 km those errors are tens of metres, which is why the shortcut survives in so many spreadsheets.</p>
+        <p>Session 3 measures it on the real exits: nearest exit per subzone centroid by raw degrees is 3.79 m too long on average and 57 m too long at worst against SVY21 metres. Then it moves the same points to 60 deg N, where the cosine is 0.5 and the average error becomes 276 m. Nothing about the formula changed. The latitude did.</p>
+      </div>
+    </details>
+
+    <details class="card">
+      <summary><span class="mode self">Self-study</span>The sphere is the bigger error near the equator<span class="mini">3 min</span><span class="caret">▶</span></summary>
+      <div class="body">
+        <p>The next step up from a constant is the haversine formula: great-circle distance on a sphere, radius 6,371,008.8 m, with the latitude inside the formula so the cosine is handled for free. It is the standard answer and it is usually good enough. In Singapore it is only slightly better than the constant: 2.57 m too long on average and 43 m at worst against projected metres, because a sphere of one radius cannot be right about both a 110.57 km meridian degree and a 111.32 km equatorial degree at once. Near the equator the ellipsoid is the bigger source of error and the cosine the smaller one; at 60 deg N the order flips. The formula that gets both right is the projection itself, which is why SVY21 metres are the reference in session 6 and why the ellipsoidal great-circle method (Vincenty 1975, reported) exists for the cases a local projection cannot cover.</p>
+      </div>
+    </details>
+
+    <div class="callout tip">
+      <p><strong>Say the latitude when you say the error.</strong> "Raw degrees are fine" is true at 1 deg N and false at 60 deg N. A method that works for Singapore and is copied to a dataset about Helsinki fails by a factor of two without a single line changing. Write the latitude range next to the method in the notes.</p>
+    </div>
+  </section>
+
+  <section class="section" id="part-3">
+    <div class="section-kicker">
+      <span class="klabel">Part 3 · covers axis order traps</span>
+      <h2>Which number comes first</h2>
+      <span class="tag concept">5 min live</span>
+    </div>
+    <p class="lede">People say "latitude, longitude". GeoJSON writes [longitude, latitude]. The EPSG registry lists SVY21's axes as northing then easting. Three conventions, two orders, and a swap produces numbers that still look like numbers. The test is a range check, and it belongs at the top of every pipeline, before any distance is computed.</p>
+
+    <figure class="zoomable">
+      <svg viewBox="0 0 880 300" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Two panels. Left, the wrong way: the pair 1.29425, 103.80618 read in GeoJSON order gives longitude 1.29 and latitude 103.81, and a latitude of 103.8 does not exist because 90 is the pole. Right, GeoJSON order: 103.80618, 1.29425 reads as longitude 103.81 east and latitude 1.29 north, inside Singapore's range of 103.6 to 104.1 east and 1.16 to 1.47 north. The note gives the range check.">
+        <defs>
+          <filter id="f1cSk" x="-3%" y="-3%" width="106%" height="106%"><feTurbulence type="fractalNoise" baseFrequency="0.02" numOctaves="2" seed="37" result="n"/><feDisplacementMap in="SourceGraphic" in2="n" scale="2.4" xChannelSelector="R" yChannelSelector="G"/></filter>
+        </defs>
+        <style>
+          .f1cH { font: 800 12px Inter, sans-serif; fill: #1C1214; }
+          .f1cL { font: 600 12px Inter, sans-serif; fill: #1C1214; }
+          .f1cS { font: 400 11px Inter, sans-serif; fill: #5F4D50; }
+          .f1cR { font: 800 12px Inter, sans-serif; fill: #991B1B; }
+          .f1cB { font: 800 12px Inter, sans-serif; fill: #8E0C22; }
+          .f1cN { font: 400 12px Inter, sans-serif; fill: #5F4D50; }
+        </style>
+
+        <text class="f1cH" x="30" y="26">THE SAME TWO NUMBERS, READ IN THE WRONG ORDER AND THE RIGHT ONE</text>
+
+        <g filter="url(#f1cSk)" fill="none" stroke="#1C1214" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="40" y="50" width="390" height="180" rx="12" transform="rotate(-0.4 235 140)" fill="#FEF2F2" stroke="#FCA5A5"/>
+          <rect x="450" y="50" width="390" height="180" rx="12" transform="rotate(0.4 645 140)" fill="#FDF0F1" stroke="#C8102E"/>
+          <rect x="58" y="100" width="354" height="24" rx="5" fill="#FFFFFF" stroke="#FCA5A5"/>
+          <rect x="468" y="100" width="354" height="24" rx="5" fill="#FFFFFF" stroke="#C8102E"/>
+        </g>
+
+        <text class="f1cR" x="58" y="84">WRONG WAY: written as [lat, long]</text>
+        <text class="f1cL" x="235" y="117" text-anchor="middle">[1.29425, 103.80618]</text>
+        <text class="f1cS" x="58" y="150">read in GeoJSON order: longitude 1.29, latitude 103.81</text>
+        <text class="f1cS" x="58" y="170">a latitude of 103.8 does not exist: 90 is the pole</text>
+        <text class="f1cS" x="58" y="190">the point is 9,531 km from the subzone it belongs to</text>
+        <text class="f1cS" x="58" y="210">no error is raised; the number is simply wrong</text>
+
+        <text class="f1cB" x="468" y="84">GEOJSON ORDER: [long, lat]</text>
+        <text class="f1cL" x="645" y="117" text-anchor="middle">[103.80618, 1.29425]</text>
+        <text class="f1cS" x="468" y="150">longitude 103.81 E, latitude 1.29 N</text>
+        <text class="f1cS" x="468" y="170">inside 103.6 to 104.1 E and 1.16 to 1.47 N</text>
+        <text class="f1cS" x="468" y="190">Queenstown MRT, Exit A, where the station is</text>
+        <text class="f1cS" x="468" y="210">passes the range check; now it can be measured</text>
+
+        <text class="f1cN" x="30" y="276">Range check before any distance: |latitude| &lt;= 90, and for Singapore 103.6 to 104.1 E, 1.16 to 1.47 N.</text>
+      </svg>
+      <figcaption>🔍 Click to zoom - a swapped pair is still a pair of plausible-looking numbers; only a range check sees that 103.8 cannot be a latitude</figcaption>
+    </figure>
+
+    <details class="card">
+      <summary><span class="mode live">Live</span>Three conventions and the one test<span class="mini">3 min</span><span class="caret">▶</span></summary>
+      <div class="body">
+        <p>Spoken English, most spreadsheets and many map interfaces put latitude first. GeoJSON and most programming libraries put longitude first, because longitude is the x axis and latitude the y axis of a flat drawing. The EPSG registry records SVY21 with northing before easting. None of these is wrong; the trap is moving between them without saying so. A swapped exit in Singapore lands near 1.29 E, 103.81 N, a latitude that cannot exist. A swapped point near the equator in the Atlantic, where longitude is also small, would pass unnoticed, which is why the check has two parts: the universal one (|latitude| &lt;= 90, |longitude| &lt;= 180) and the local one (the bounding box of the place the data is about).</p>
+        <p>Session 6 has a button that swaps the two columns on all 613 exits and recomputes everything. The result is not subtle: 332 of 332 subzones contain zero exits, and the median nearest exit is 9,531 km away. The largest "latitude" is 103.989. One line of range checking would have stopped it at row 1.</p>
+      </div>
+    </details>
+
+    <details class="card">
+      <summary><span class="mode self">Self-study</span>Precision is not accuracy<span class="mini">2 min</span><span class="caret">▶</span></summary>
+      <div class="body">
+        <p>The exits file carries coordinates to 14 decimal places. At 1 deg N, the fifth decimal of a degree is about 1.1 m and the seventh about 1 cm; everything after that is arithmetic residue, not survey precision. The shipped data for session 6 keeps five decimals, which is why the bench says so on the widget, and the subzone boundaries are simplified to about 33 m tolerance for the page, which is why three exits fall outside every simplified boundary. Fourteen decimals on a point that was digitised from a plan is a precision claim nobody made. Record the precision you believe, not the one the file prints.</p>
+      </div>
+    </details>
+
+    <div class="callout example">
+      <span class="ex-pill">Real world</span>
+      <p><strong>Arif's spreadsheet (constructed).</strong> Arif arrives with a list of estate blocks he typed from a planning portal, columns "Lat" and "Long". Two rows have the numbers the other way round, because he read them off a page that showed them longitude first. Mei does not look for them by eye. She runs the range check on the whole sheet and it names the two rows. The desk's rule is that a coordinate column is validated the way a date column is: by shape, before by content.</p>
+    </div>
+  </section>
+
+  <section class="section" id="demo-1">
+    <div class="section-kicker">
+      <span class="klabel">Build-along</span>
+      <h2>One row, two systems, one gate</h2>
+      <span class="tag demo">★ 22 min · everyone builds</span>
+    </div>
+    <p class="lede">Mei downloads the real MRT exits file from data.gov.sg into an empty folder, opens it with the standard library only, names its system, writes the first six exits in SVY21 metres, and puts a range check in front of everything that follows. Do the same. The outputs below are the real ones from the file of 2026-10-22; the file is updated every six months, so if yours was downloaded later the first rows may differ.</p>
+
+    <figure class="zoomable">
+      <svg viewBox="0 0 880 280" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="A five-step pipeline drawn as boxes with arrows: the raw file, name the CRS, convert, range check, measure. The range check box is filled in flag red because it is the gate: a swapped or untagged coordinate fails there, before it becomes a distance. Under each box a two-line note: 613 points; no crs member means WGS 84 longitude first; svy21 of longitude and latitude gives metres; latitude within 90 and inside Singapore's box; nearest exit in metres.">
+        <defs>
+          <filter id="f1dSk" x="-3%" y="-3%" width="106%" height="106%"><feTurbulence type="fractalNoise" baseFrequency="0.02" numOctaves="2" seed="41" result="n"/><feDisplacementMap in="SourceGraphic" in2="n" scale="2.4" xChannelSelector="R" yChannelSelector="G"/></filter>
+          <marker id="f1dAr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M1 1 L9 5 L1 9" fill="none" stroke="#1C1214" stroke-width="1.6" stroke-linecap="round"/></marker>
+        </defs>
+        <style>
+          .f1dH { font: 800 12px Inter, sans-serif; fill: #1C1214; }
+          .f1dL { font: 600 12px Inter, sans-serif; fill: #1C1214; }
+          .f1dS { font: 400 11px Inter, sans-serif; fill: #5F4D50; }
+          .f1dB { font: 800 11px Inter, sans-serif; fill: #8E0C22; }
+          .f1dN { font: 400 12px Inter, sans-serif; fill: #5F4D50; }
+        </style>
+
+        <text class="f1dH" x="30" y="26">THE DESK'S PIPELINE: THE GATE COMES BEFORE THE DISTANCE</text>
+
+        <g filter="url(#f1dSk)" fill="none" stroke="#1C1214" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="40" y="90" width="130" height="60" rx="10" transform="rotate(-0.8 105 120)" fill="#FFFFFF"/>
+          <rect x="200" y="90" width="130" height="60" rx="10" transform="rotate(0.6 265 120)" fill="#FDF0F1"/>
+          <rect x="360" y="90" width="130" height="60" rx="10" transform="rotate(-0.5 425 120)" fill="#FDF0F1"/>
+          <rect x="520" y="90" width="130" height="60" rx="10" transform="rotate(0.7 585 120)" fill="#EF3340"/>
+          <rect x="680" y="90" width="130" height="60" rx="10" transform="rotate(-0.6 745 120)" fill="#FFFFFF"/>
+          <path d="M172 120 L198 120" marker-end="url(#f1dAr)"/>
+          <path d="M332 120 L358 120" marker-end="url(#f1dAr)"/>
+          <path d="M492 120 L518 120" marker-end="url(#f1dAr)"/>
+          <path d="M652 120 L678 120" marker-end="url(#f1dAr)"/>
+          <path d="M585 154 C585 176 585 186 585 196" marker-end="url(#f1dAr)" stroke="#991B1B" stroke-dasharray="5 4"/>
+        </g>
+
+        <text class="f1dL" x="105" y="116" text-anchor="middle">1 · raw file</text>
+        <text class="f1dS" x="105" y="134" text-anchor="middle">exits.geojson, 613 points</text>
+        <text class="f1dL" x="265" y="116" text-anchor="middle">2 · name the CRS</text>
+        <text class="f1dS" x="265" y="134" text-anchor="middle">no crs member = EPSG:4326</text>
+        <text class="f1dL" x="425" y="116" text-anchor="middle">3 · convert</text>
+        <text class="f1dS" x="425" y="134" text-anchor="middle">svy21(long, lat) in metres</text>
+        <text class="f1dL" x="585" y="116" text-anchor="middle">4 · range check</text>
+        <text class="f1dL" x="585" y="134" text-anchor="middle">|lat| &lt;= 90, in the SG box</text>
+        <text class="f1dL" x="745" y="116" text-anchor="middle">5 · measure</text>
+        <text class="f1dS" x="745" y="134" text-anchor="middle">nearest exit, in metres</text>
+        <text class="f1dB" x="585" y="218" text-anchor="middle">a swapped row stops here, named</text>
+        <text class="f1dS" x="585" y="234" text-anchor="middle">before it becomes a 9,531 km distance</text>
+
+        <text class="f1dN" x="30" y="262">Step 2 is a sentence in the notes. Step 4 is three lines of code. Together they catch most of what goes wrong later.</text>
+      </svg>
+      <figcaption>🔍 Click to zoom - the red box is the only step that can say no; everything after it trusts what it let through</figcaption>
+    </figure>
+
+    <div class="steps">
+      <div class="step">
+        <p><strong>Download into an empty folder and look before you parse.</strong> The exits dataset on data.gov.sg is <code>d_b39d3a0871985372d7e1637193335da5</code> (LTA MRT Station Exit, GEOJSON). Mei saves it into a fresh directory, keeps her script elsewhere, and runs Python with <code>-I</code> so nothing in the download folder can be imported by accident. A downloaded file is data, not code.</p>
+        <div class="prompt-box good"><span class="label">★ Step 1 · open it</span>import json, sys
+f = json.load(open(sys.argv[1], encoding="utf-8"))
+print(f["type"], f.get("name"), len(f["features"]))
+print(f.get("crs"))                      # None: GeoJSON's default applies
+p = f["features"][0]
+print(p["geometry"]["type"], p["geometry"]["coordinates"], p["properties"]["STATION_NA"], p["properties"]["EXIT_CODE"])
+
+# run:  python3 -I read_exits.py downloads/d_b39d3a0871985372d7e1637193335da5.geojson
+# FeatureCollection MRT_EXITS 613
+# None
+# Point [103.90459124473303, 1.302531699392386] MARINE PARADE MRT STATION Exit 2</div>
+      </div>
+      <div class="step">
+        <p><strong>Name the system in writing.</strong> No <code>crs</code> member means WGS 84 with longitude first. Mei writes that down next to the file name, with the licence line the dataset requires, before any arithmetic.</p>
+        <div class="prompt-box good"><span class="label">★ Step 2 · the note</span>exits.geojson   EPSG:4326 (WGS 84), coordinates [longitude, latitude], 613 points
+                Contains information from LTA MRT Station Exit (GEOJSON) accessed on 2026-10-22
+                from data.gov.sg which is made available under the terms of the Singapore Open
+                Data Licence version 1.0 https://data.gov.sg/open-data-licence
+subzones        EPSG:4326, [longitude, latitude], 332 polygons (same licence line, URA dataset)</div>
+      </div>
+      <div class="step">
+        <p><strong>Write the conversion, then prove it on the origin.</strong> The EPSG:3414 parameters go in by name. The series below is the standard transverse Mercator forward formula for an ellipsoid; the test at the end is the one that matters: the natural origin must return the false easting and northing exactly.</p>
+        <div class="prompt-box good"><span class="label">★ Step 3 · svy21()</span>import math
+A, F = 6378137.0, 1 / 298.257223563            # WGS 84 ellipsoid (EPSG:4757 SVY21 datum)
+LAT0, LON0 = 1 + 22 / 60, 103 + 50 / 60       # natural origin, degrees
+FE, FN, K0 = 28001.642, 38744.572, 1.0        # false easting, false northing, scale factor
+E2 = 2 * F - F * F; EP2 = E2 / (1 - E2); E4 = E2 * E2; E6 = E4 * E2
+
+def merid(phi):                                # meridian arc from the equator, metres
+    return A * ((1 - E2/4 - 3*E4/64 - 5*E6/256) * phi
+                - (3*E2/8 + 3*E4/32 + 45*E6/1024) * math.sin(2*phi)
+                + (15*E4/256 + 45*E6/1024) * math.sin(4*phi)
+                - (35*E6/3072) * math.sin(6*phi))
+
+M0 = merid(math.radians(LAT0))
+
+def svy21(lon, lat):
+    phi, lam = math.radians(lat), math.radians(lon)
+    s, c, t = math.sin(phi), math.cos(phi), math.tan(phi)
+    n = A / math.sqrt(1 - E2 * s * s); tt = t * t; cc = EP2 * c * c
+    a1 = (lam - math.radians(LON0)) * c; a2 = a1*a1; a3 = a2*a1; a4 = a3*a1; a5 = a4*a1; a6 = a5*a1
+    x = K0 * n * (a1 + (1 - tt + cc) * a3/6 + (5 - 18*tt + tt*tt + 72*cc - 58*EP2) * a5/120)
+    y = K0 * (merid(phi) - M0 + n * t * (a2/2 + (5 - tt + 9*cc + 4*cc*cc) * a4/24
+              + (61 - 58*tt + tt*tt + 600*cc - 330*EP2) * a6/720))
+    return FE + x, FN + y
+
+assert svy21(LON0, LAT0) == (28001.642, 38744.572)   # the control point, by definition</div>
+      </div>
+      <div class="step">
+        <p><strong>Write the first six exits both ways.</strong> These are the real outputs for the 2026-10-22 file, in the file's own order. Eastings run from about 2,700 m at Tuas to about 56,400 m at Changi Bay; northings from about 15,700 to 50,300 m. A value outside that is a sign, not a coordinate.</p>
+        <div class="prompt-box good"><span class="label">★ Step 4 · both systems</span>for p in f["features"][:6]:
+    lon, lat = p["geometry"]["coordinates"][:2]
+    E, N = svy21(lon, lat)
+    print(f'{p["properties"]["STATION_NA"]:&lt;28} {p["properties"]["EXIT_CODE"]:&lt;8} {lon:.5f} {lat:.5f} -&gt; {E:10.1f} {N:10.1f}')
+
+# QUEENSTOWN MRT STATION       Exit A   103.80618 1.29425 ->    24979.7    30737.1
+# REDHILL MRT STATION          Exit A   103.81699 1.28937 ->    26182.8    30197.5
+# REDHILL MRT STATION          Exit B   103.81725 1.28949 ->    26211.7    30210.8
+# COMMONWEALTH MRT STATION     Exit B   103.79806 1.30275 ->    24076.0    31677.0
+# COMMONWEALTH MRT STATION     Exit A   103.79796 1.30265 ->    24064.9    31666.0
+# TIONG BAHRU MRT STATION      Exit A   103.82699 1.28576 ->    27295.7    29798.3</div>
+      </div>
+      <div class="step">
+        <p><strong>Put the gate in front.</strong> Two parts: the universal check and the local box. Run it over all 613 exits; then swap the two numbers on purpose and run it again, so you have seen the gate say no before you need it to.</p>
+        <div class="prompt-box good"><span class="label">★ Step 5 · range check</span>SG = (103.6, 104.1, 1.16, 1.47)                 # longitude min, max; latitude min, max
+
+def check(lon, lat, where):
+    if abs(lat) > 90 or abs(lon) > 180:
+        return f"{where}: impossible coordinate lon={lon} lat={lat} (swapped?)"
+    if not (SG[0] &lt;= lon &lt;= SG[1] and SG[2] &lt;= lat &lt;= SG[3]):
+        return f"{where}: outside Singapore lon={lon} lat={lat}"
+    return None
+
+bad = [m for i, p in enumerate(f["features"])
+       for m in [check(*p["geometry"]["coordinates"][:2], f"row {i}")] if m]
+print(len(bad), "problems")                     # 0 problems  (longitude 103.6368 to 103.9893, latitude 1.2650 to 1.4492)
+
+swapped = [check(lat, lon, f"row {i}") for i, p in enumerate(f["features"])
+           for lon, lat in [p["geometry"]["coordinates"][:2]]]
+print(sum(1 for m in swapped if m), "problems after swapping")   # 613 problems after swapping
+print(swapped[0])                               # row 0: impossible coordinate lon=1.302531699392386 lat=103.90459124473303 (swapped?)</div>
+      </div>
+    </div>
+
+    <div class="callout tip">
+      <p><strong>Keep the notes file next to the data file.</strong> Mei's two-line note from step 2 is the thing the desk will need in six months when someone asks why the eastings are in the thirty-thousands. A conversion without its system name is the same unverified claim it started as, one step further from the source.</p>
+    </div>
+  </section>
+
+  <section class="section" id="exercise">
+    <div class="section-kicker">
+      <span class="klabel">Homework</span>
+      <h2>Before session 2</h2>
+      <span class="tag exercise">30 min</span>
+    </div>
+    <ol>
+      <li><strong>Find one table at work with a latitude in it.</strong> Write down its reference system and its axis order. If you cannot find either in the documentation, that is the finding.</li>
+      <li><strong>Run the gate on it.</strong> Count the rows that fail the universal check and the rows that fail the local box. Keep the two counts separate: they are different mistakes.</li>
+      <li><strong>Download the URA subzone file</strong> (<code>d_8594ae9ff96d0c708bc2af633048edfb</code>) into the same empty folder and print how many features it has and what geometry types appear. Session 2 starts from that print.</li>
+      <li><strong>Convert the origin yourself</strong> and one more point whose metres you can reason about: a point exactly one degree north of the origin should land about 110.6 km north of the false northing. Check that it does.</li>
+    </ol>
+  </section>
+
+  <section class="section" id="quiz">
+    <div class="section-kicker">
+      <span class="klabel">Check yourself</span>
+      <h2>Three questions</h2>
+    </div>
+    <p>Clear all three and session 1 gets stamped in your passport.</p>
+
+    <div class="quiz-q" data-answer="2">
+      <p class="qtext">1 · A GeoJSON file has no <code>crs</code> member and its first coordinate is [103.80618, 1.29425]. What does the row mean?</p>
+      <button class="qopt" type="button">A · Nothing can be said until the publisher is asked which system they used</button>
+      <button class="qopt" type="button">B · Latitude 103.80618, longitude 1.29425, in whatever system the file came from</button>
+      <button class="qopt" type="button">C · Longitude 103.80618 E, latitude 1.29425 N on WGS 84 (EPSG:4326), because GeoJSON fixes both the system and the longitude-first order by convention</button>
+      <button class="qopt" type="button">D · Easting 103.8 and northing 1.29 in SVY21 metres</button>
+      <p class="qwhy">GeoJSON's default is WGS 84 with longitude first, so an absent <code>crs</code> is itself the answer. B reads the pair in the spoken order and produces an impossible latitude; D would need values in the tens of thousands. A is overcautious: the convention is the publisher's statement.</p>
+    </div>
+
+    <div class="quiz-q" data-answer="0">
+      <p class="qtext">2 · Multiplying degree differences by 111,320 m per degree on both axes is almost right in Singapore. Why does the same code fail at 60 deg N?</p>
+      <button class="qopt" type="button">A · A degree of longitude is 111.32 km times cos(latitude): 111.29 km at 1 deg 22' N, 55.66 km at 60 deg N, so east-west distances come out twice too long</button>
+      <button class="qopt" type="button">B · Because the Earth's radius is smaller at 60 deg N</button>
+      <button class="qopt" type="button">C · It does not fail; 111,320 is a universal constant</button>
+      <button class="qopt" type="button">D · Because SVY21 is not defined at 60 deg N</button>
+      <p class="qwhy">The mechanism is one cosine on the longitude axis. B points at the ellipsoid, which is the smaller effect and already present at the equator; D is true but irrelevant, since the raw-degree shortcut uses no projection at all.</p>
+    </div>
+
+    <div class="quiz-q" data-answer="3">
+      <p class="qtext">3 · Arif's sheet has columns Lat and Long, and two rows have the values swapped. What catches them before any distance is computed?</p>
+      <button class="qopt" type="button">A · Plotting all the points and looking for the ones in the sea</button>
+      <button class="qopt" type="button">B · Converting to SVY21 metres, which will raise an error on a bad input</button>
+      <button class="qopt" type="button">C · Sorting the sheet by latitude and reading the ends</button>
+      <button class="qopt" type="button">D · A range check: |latitude| &lt;= 90 and |longitude| &lt;= 180 for every row, then the Singapore box 103.6 to 104.1 E and 1.16 to 1.47 N</button>
+      <p class="qwhy">The conversion formula happily computes nonsense for a latitude of 103.8 and raises nothing; a plot finds the problem only after the pipeline has run; sorting finds extremes but not a swap that lands inside the range. The range check names the rows at the top of the pipeline.</p>
+    </div>
+
+    <p class="quiz-score"></p>
+  </section>
+
+  <section class="section" id="official">
+    <div class="section-kicker">
+      <span class="klabel">Sources covered</span>
+      <h2>What this session teaches, and where it came from</h2>
+    </div>
+    <div class="covered">
+      <div class="covered-row"><span class="status pill solid">✓</span><span class="name">LTA MRT Station Exit (GEOJSON), data.gov.sg d_b39d3a0871985372d7e1637193335da5</span><span class="note">Read in the file and on the dataset page, 2026-10-22: 613 points, no crs member, attributes STATION_NA and EXIT_CODE; every printed output above is the real one. Singapore Open Data Licence v1.0</span></div>
+      <div class="covered-row"><span class="status pill solid">✓</span><span class="name">EPSG:3414 SVY21 / Singapore TM and EPSG:4757</span><span class="note">Parameters read in the EPSG registry via epsg.io: origin 1 deg 22' N, 103 deg 50' E, scale 1, false easting 28,001.642 m, false northing 38,744.572 m, WGS 84 ellipsoid; replaces Kertau 1968 for cadastre from August 2004</span></div>
+      <div class="covered-row"><span class="status pill solid">✓</span><span class="name">Degree lengths and the swap numbers</span><span class="note">111.32 km, 111.29 km, 55.66 km and 110.57 km follow from the WGS 84 ellipsoid parameters; the 9,531 km, 332 of 332 and 103.989 figures are computed by the session 6 engine and agree with the Python reference</span></div>
+      <div class="covered-row"><span class="status pill light">◐</span><span class="name">The transverse Mercator series</span><span class="note">Standard series (Snyder 1987, reported); verified here against the origin control point and an independent series to under a micrometre, not re-read at source</span></div>
+      <div class="covered-row"><span class="status pill light">◐</span><span class="name">Rivermont, Mei, Arif and Priya</span><span class="note">Constructed for teaching; no number about them is a measurement</span></div>
+    </div>
+    <p class="mono" style="margin-top:14px">Every fact on this page, and its verification tier, is recorded in the course's source map.</p>
+  </section>
+
+  <section class="cheat" id="cheatsheet">
+    <h3>Session 1 cheat sheet <span>· pin this</span></h3>
+    <div class="grid-2">
+      <div class="cheat-item"><b>A coordinate is a claim</b><span>Numbers plus a reference system equal a location. Write the system next to the file name, every time.</span></div>
+      <div class="cheat-item"><b>Two systems in Singapore</b><span>WGS 84 degrees (EPSG:4326, GeoJSON's default, longitude first) and SVY21 metres (EPSG:3414, northing then easting in the registry).</span></div>
+      <div class="cheat-item"><b>The control point</b><span>svy21(103 deg 50' E, 1 deg 22' N) must return (28,001.642, 38,744.572). If it does not, nothing downstream is trusted.</span></div>
+      <div class="cheat-item"><b>One degree is not one length</b><span>111.32 km of longitude at the equator times cos(latitude); 110.57 km of latitude near the equator. Say the latitude when you say the error.</span></div>
+      <div class="cheat-item"><b>The gate</b><span>|lat| &lt;= 90, |lon| &lt;= 180, then the local box 103.6 to 104.1 E, 1.16 to 1.47 N. Before any distance.</span></div>
+      <div class="cheat-item"><b>Precision you believe</b><span>Fourteen decimals is arithmetic residue; the fifth decimal is about a metre here. Record what the source could measure.</span></div>
+    </div>
+  </section>
+
+  <div class="callout next">
+    <span class="nx-pill">Next session</span>
+    <p>Mei can now say where a row is. Session 2 asks which zone it is in: the 332 URA subzones as polygons, rings and holes, the even-odd rule that decides inside from outside by counting crossings, what simplifying a boundary does to the answer, and why the boundary you choose is itself a decision.</p>
+  </div>
+
+  <footer class="pagefoot">
+    <span>Session 1 of 6 · learn-geospatial-with-phoebe · by Phoebe Fu &nbsp;·&nbsp; 📚 <a href="https://phoebefu6.github.io/learn-with-phoebe/">Learn with Phoebe ↗</a></span>
+    <span><a href="../index.html">← Course home</a> &nbsp;·&nbsp; <a href="02-points-polygons-subzone.html">Next: Points, polygons and the subzone →</a></span>
+  </footer>
+
+</main>
+
+<script src="../assets/app.js?v=1"></script>
+</body>
+</html>

@@ -1,0 +1,626 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- social:start -->
+<meta name="description" content="Session 5 of 6. Eight NEA dengue clusters and 141 cases on one day, joined to URA subzones and planning areas by centroid, then counted three ways: cases per cluster, cases per 100,000 residents of the subzone, cases per 100,000 of the planning area. The same eight polygons make three different maps, and Kian Teck, 40 residents and 2 cases, becomes the darkest cell on one of them. A geometry-and-join exercise on real Singapore open data, with a constructed town-council desk and no health advice.">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Learn with Phoebe">
+<meta property="og:title" content="Disease on the map - learn geospatial data with phoebe">
+<meta property="og:description" content="Session 5 of 6. Eight clusters, 141 cases, three denominators, three maps. Why the darkest cell moves when the cases did not, and why COVID is not on this page.">
+<meta property="og:url" content="https://phoebefu6.github.io/learn-geospatial-with-phoebe/courses/05-disease-on-the-map.html">
+<meta property="og:image" content="https://phoebefu6.github.io/learn-geospatial-with-phoebe/assets/og-cover.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Disease on the map - learn geospatial data with phoebe">
+<meta name="twitter:description" content="Session 5 of 6. Eight clusters, three denominators, three maps: the choropleth that lies.">
+<meta name="twitter:image" content="https://phoebefu6.github.io/learn-geospatial-with-phoebe/assets/og-cover.png">
+<!-- social:end -->
+<title>Session 5 · Disease on the map - learn geospatial data with phoebe</title>
+<link rel="stylesheet" href="../assets/style.css?v=1">
+</head>
+<body>
+
+<div class="toolbar">
+  <div class="wrap">
+    <span class="crumb"><a href="../index.html">learn-geospatial-with-phoebe</a> / Session 5 of 6</span>
+    <button class="btn" id="toggle-all" type="button">Expand all</button>
+    <button class="btn primary" id="zoom-toggle" type="button">Projector zoom: off</button>
+  </div>
+</div>
+
+<header class="masthead">
+  <div class="wrap">
+    <div class="eyebrow">Learn Geospatial Data with Phoebe · Session 5 of 6</div>
+    <h1><span class="accent">Disease</span> on the map</h1>
+    <p class="sub">Four sessions in, Mei can say where a row is, which zone it sits in, how far it is from the next thing, and how to join 613 points to 332 polygons without a full loop. Tonight the points become polygons of their own: NEA's dengue clusters, a daily file of localities with a case count on each. Arif wants them on the town map, coloured by how bad things are. That sentence hides a choice. Cases per cluster, cases per resident of the subzone and cases per resident of the planning area are three honest numbers from the same eight shapes, and they produce three maps that disagree about where the dark cell goes. This is a geometry-and-join exercise and nothing more: the page teaches joins and denominators, quotes NEA's own definitions, and leaves every statement about risk and prevention to NEA and MOH, linked.</p>
+    <div class="chip-row">
+      <span class="chip level">🟠 Deeper</span>
+      <span class="chip audience">Anyone who has been asked to colour a map by a count</span>
+      <span class="chip audience">Python standard library only</span>
+      <span class="chip time">45 min</span>
+    </div>
+    <div class="agenda">
+      <span class="a1" style="flex:1">0-3 · Welcome</span>
+      <span class="a2" style="flex:4">3-18 · Clusters, denominators, what is absent</span>
+      <span class="a3" style="flex:5">18-40 · Build-along: one join, three tables</span>
+      <span class="a4" style="flex:1">40-45 · Q&amp;A</span>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <section class="section" id="intro">
+    <div class="section-kicker">
+      <span class="klabel">Part 0</span>
+      <h2>Where we start</h2>
+    </div>
+    <p class="lede">The running case is constructed. Rivermont is an invented town-council data desk: Mei runs it, Arif is the estates officer who brings the questions, Priya is the general manager who signs off. Nothing about Rivermont is a measurement. The data is real Singapore open data from data.gov.sg (URA subzones, LTA MRT exits, NEA dengue clusters, SingStat Census 2020), accessed 2026-10-22 under the Singapore Open Data Licence v1.0; Rivermont is constructed. On 2026-10-22 the NEA file held 8 clusters and 141 cases: 96, 16, 13, 5, 4, 3, 2, 2. Arif's question is "which of our estates is worst?" Mei's answer, by the end of the night, is "worst by which count?", and she can show him why that is not a dodge.</p>
+
+    <div class="legend">
+      <span class="pill">🎫 Clear all three quiz questions to stamp your passport</span>
+      <span class="pill">Live = presented in the 45 minutes</span>
+      <span class="pill">Self-study = the full depth, after class</span>
+      <span class="pill">★ Build-along = run it yourself</span>
+    </div>
+
+    <div class="callout win">
+      <p><strong>★ What you walk out with tonight.</strong> NEA's definition of a cluster in NEA's words, so you never describe the polygon as something it is not; a centroid join that puts each cluster in exactly one subzone and one planning area; the three denominators and the three tables they produce from one snapshot, with the 46 subzones that have no population handled as missing rather than zero; and a clear account of why the obvious disease dataset of the decade is not on the page.</p>
+    </div>
+  </section>
+
+  <section class="section" id="part-1">
+    <div class="section-kicker">
+      <span class="klabel">Part 1 · covers what an NEA cluster is and how it joins</span>
+      <h2>A cluster is a locality, not an address</h2>
+      <span class="tag concept">5 min live</span>
+    </div>
+    <p class="lede">Rivermont is constructed; the file Mei opens is real. NEA publishes the dengue clusters as polygons, and the definition on NEA's own page is the thing to read before any geometry: a cluster forms when "two or more cases have onset within 14 days and are located within 150m of each other", and "operationally, a dengue cluster indicates a locality with active transmission where intervention is targeted". Case locations are based on "residential and workplace addresses". So each polygon is a locality drawn around addresses, not an address, and the count on it is cases in that locality. To put it on Arif's map of subzones, Mei needs one more rule: which subzone does a polygon that may straddle a boundary belong to? Tonight's answer is the simplest honest one, the centroid, and the page says every place that choice bites.</p>
+
+    <figure class="zoomable">
+      <svg viewBox="0 0 880 330" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Two panels. Left: two case dots, the second inside a dashed 150 metre circle around the first, over a timeline from day 0 to day 14 labelled onset within 14 days; the caption says two or more cases within 150 metres and 14 days form a cluster. Right: a boundary line divides subzone A from subzone B; a cluster polygon straddles it; its centroid, a flag-red dot, falls on the B side, so all of the cluster's cases are counted in subzone B. The note says a cluster is a locality, not an address, and joining by centroid gives all its cases to one subzone.">
+        <defs>
+          <filter id="f5aSk" x="-3%" y="-3%" width="106%" height="106%"><feTurbulence type="fractalNoise" baseFrequency="0.02" numOctaves="2" seed="51" result="n"/><feDisplacementMap in="SourceGraphic" in2="n" scale="2.4" xChannelSelector="R" yChannelSelector="G"/></filter>
+          <marker id="f5aAr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M1 1 L9 5 L1 9" fill="none" stroke="#1C1214" stroke-width="1.6" stroke-linecap="round"/></marker>
+        </defs>
+        <style>
+          .f5aH { font: 800 12px Inter, sans-serif; fill: #1C1214; }
+          .f5aL { font: 600 12px Inter, sans-serif; fill: #1C1214; }
+          .f5aS { font: 400 11px Inter, sans-serif; fill: #5F4D50; }
+          .f5aB { font: 800 11px Inter, sans-serif; fill: #8E0C22; }
+          .f5aA { font: 700 11px Inter, sans-serif; fill: #C8102E; }
+          .f5aN { font: 400 12px Inter, sans-serif; fill: #5F4D50; }
+        </style>
+
+        <text class="f5aH" x="30" y="26">WHAT A CLUSTER IS, AND WHERE THE JOIN PUTS IT</text>
+
+        <g filter="url(#f5aSk)" fill="none" stroke="#1C1214" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="40" y="44" width="380" height="230" rx="10" transform="rotate(0.4 230 159)" fill="#FFFFFF"/>
+          <rect x="460" y="44" width="380" height="230" rx="10" transform="rotate(-0.4 650 159)" fill="#FDF0F1"/>
+          <circle cx="150" cy="150" r="70" stroke="#C8102E" stroke-width="1.6" stroke-dasharray="5 4"/>
+          <circle cx="150" cy="150" r="6" fill="#FFFFFF"/>
+          <circle cx="205" cy="185" r="6" fill="#FFFFFF"/>
+          <path d="M70 240 L390 240" stroke-width="1.6"/>
+          <path d="M70 234 L70 246 M390 234 L390 246" stroke-width="1.6"/>
+          <path d="M620 70 L637 232" stroke="#5F4D50" stroke-width="1.6"/>
+          <path d="M560 130 L720 120 L730 200 L600 220 Z" fill="#FFFFFF"/>
+          <circle cx="650" cy="167" r="7" fill="#EF3340"/>
+        </g>
+
+        <text class="f5aA" x="56" y="66">TWO CASES BECOME A CLUSTER</text>
+        <text class="f5aL" x="150" y="136" text-anchor="middle">case 1</text>
+        <text class="f5aL" x="240" y="206">case 2</text>
+        <text class="f5aB" x="232" y="118">within 150 m</text>
+        <text class="f5aS" x="70" y="260">day 0</text>
+        <text class="f5aS" x="230" y="260" text-anchor="middle">onset within 14 days</text>
+        <text class="f5aS" x="390" y="260" text-anchor="end">day 14</text>
+
+        <text class="f5aA" x="476" y="66">JOINED BY CENTROID</text>
+        <text class="f5aL" x="540" y="86">subzone A</text>
+        <text class="f5aL" x="722" y="86">subzone B</text>
+        <text class="f5aS" x="650" y="108">cluster polygon, a locality</text>
+        <text class="f5aB" x="668" y="171">centroid</text>
+        <text class="f5aL" x="650" y="250" text-anchor="middle">all of its cases count in subzone B</text>
+
+        <text class="f5aN" x="30" y="306">A cluster is a locality, not an address. Joining by centroid gives all its cases to one subzone.</text>
+      </svg>
+      <figcaption>🔍 Click to zoom - the red dot is the only decision on this figure; move it across the line and 96 cases change subzone</figcaption>
+    </figure>
+
+    <details class="card" open>
+      <summary><span class="mode live">Live</span>The polygon, the count and the three text columns the page calls numeric<span class="mini">3 min</span><span class="caret">▶</span></summary>
+      <div class="body">
+        <p>The NEA dataset is <code>d_dbfabf16158d1b0e1c420627c0819168</code>, Dengue Clusters (GEOJSON). It changes daily; "map data is updated at 1am", and the snapshot on this page was downloaded on 2026-10-22, when the file was last updated at 10:06 SGT. Each feature carries LOCALITY, CASE_SIZE, NAME, HYPERLINK, HOMES, PUBLIC_PLACES, CONSTRUCTION_SITES and the usual INC_CRC and FMEL_UPD_D. CASE_SIZE is the count on the polygon. The dataset page types HOMES, PUBLIC_PLACES and CONSTRUCTION_SITES as Numeric; in the file they are text lists of breeding-site types, or null. That mismatch is worth a line in the notes before anyone tries to sum them.</p>
+        <p>Eight features on 2026-10-22, case sizes 96, 16, 13, 5, 4, 3, 2 and 2, total 141. NEA's alert levels are quoted as written: red is a "High-risk area with 10 or more cases", yellow a "High-risk area with less than 10 cases", green "No new cases, under surveillance for the next 21 days". Those are NEA's categories for NEA's purposes. The page uses the case count only as a number to join and divide; what a count means for anyone living there is NEA's and MOH's to say, at <a href="https://www.nea.gov.sg/dengue-zika/dengue/dengue-clusters">nea.gov.sg, dengue clusters</a>.</p>
+      </div>
+    </details>
+
+    <details class="card">
+      <summary><span class="mode self">Self-study</span>Centroid join: why it is simplest, and the two places it bites<span class="mini">4 min</span><span class="caret">▶</span></summary>
+      <div class="body">
+        <p>Session 2's centroid is the area-weighted planar centroid of the outer rings minus holes, in degrees, which is fine at 1 deg N. Session 4's point-in-polygon test puts that point in a subzone. The result is a many-to-one join: each cluster lands in exactly one subzone and, through the subzone's PLN_AREA_N attribute, exactly one planning area. On the 2026-10-22 snapshot the eight centroids fall in six subzones across five planning areas: two clusters in Jurong West (Taman Jurong and Kian Teck), one each in Outram (Chinatown), Bishan (Bishan East) and Serangoon (Upper Paya Lebar), and three in the single subzone of Tagore in Ang Mo Kio.</p>
+        <p>It bites in two ways. First, a polygon that straddles a boundary gives all of its cases to whichever side the centroid lands on; a cluster of 96 cases is treated the same as a cluster of 2. The alternatives, splitting cases by the share of area on each side or by the share of residents, are better in some ways and introduce assumptions of their own; which one a desk picks should be written down next to the table it produces. Second, a concave or multi-part locality can have a centroid that lies outside itself, exactly as session 2 showed for subzones. On this snapshot none of the eight does, and the build-along prints the check so you can see it fail the day it does.</p>
+      </div>
+    </details>
+
+    <div class="callout example">
+      <span class="ex-pill">Real world</span>
+      <p><strong>The column typed Numeric that holds words.</strong> A familiar data-desk pattern: a catalogue page says a field is a number, a pipeline casts it, and the first row with text in it throws, or worse, becomes null quietly and the column sums to something small and plausible. The fix is never to trust the type on the page over the type in the file. Print the Python type of the first few values of every column before any arithmetic; a catalogue record is a claim about the data, and the data is the data.</p>
+    </div>
+  </section>
+
+  <section class="section" id="part-2">
+    <div class="section-kicker">
+      <span class="klabel">Part 2 · covers three denominators, three maps</span>
+      <h2>The choropleth that lies</h2>
+      <span class="tag concept">6 min live</span>
+    </div>
+    <p class="lede">Rivermont is constructed; every number in this Part is from the real snapshot and Census 2020. Arif wants one map coloured from pale to dark. Mei has three honest numbers to colour it by. Cases per cluster: Taman Jurong has 96 and is the darkest thing on the island. Cases per 100,000 residents of the subzone, with the Census 2020 resident count as the denominator: Kian Teck has 2 cases and 40 residents, which is 5,000 per 100,000, twenty times Taman Jurong's 240.5, and now Kian Teck is the darkest cell and Taman Jurong is a mid-tone next door. Cases per 100,000 of the planning area: Jurong West, which holds both, is 98 cases over 262,730 residents, 37.3, and the whole west is one even shade. Nothing in the data moved. The denominator did.</p>
+
+    <figure class="zoomable">
+      <svg viewBox="0 0 880 360" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Three small maps of the same clusters on 2026-10-22, drawn as cells. Left, by cases per cluster: Taman Jurong 96 is the flag-red darkest cell, Bishan East 16 and Tagore 18 are hatched, Chinatown 5 and Upper Paya Lebar 4 are pale, Kian Teck 2 is white. Middle, per 100,000 residents of the subzone: Kian Teck 5,000 is the darkest cell, Taman Jurong 240.5 and Tagore 226.4 are hatched, Bishan East 56.5 and Chinatown 47.7 pale, Upper Paya Lebar 23.6 white. Right, per 100,000 of the planning area: Jurong West 37.3 is darkest, Outram 27.3 and Bishan 18.3 hatched, Ang Mo Kio 11.1 pale, Serangoon 3.4 white. The note says the darkest cell moves because the denominator moved, not the cases.">
+        <defs>
+          <filter id="f5bSk" x="-3%" y="-3%" width="106%" height="106%"><feTurbulence type="fractalNoise" baseFrequency="0.02" numOctaves="2" seed="59" result="n"/><feDisplacementMap in="SourceGraphic" in2="n" scale="2.4" xChannelSelector="R" yChannelSelector="G"/></filter>
+          <pattern id="f5bHc" patternUnits="userSpaceOnUse" width="7" height="7" patternTransform="rotate(-38)"><line x1="0" y1="0" x2="0" y2="7" stroke="#C8102E" stroke-width="1" opacity=".5"/></pattern>
+        </defs>
+        <style>
+          .f5bH { font: 800 12px Inter, sans-serif; fill: #1C1214; }
+          .f5bL { font: 600 11px Inter, sans-serif; fill: #1C1214; }
+          .f5bS { font: 400 11px Inter, sans-serif; fill: #5F4D50; }
+          .f5bV { font: 800 12px Inter, sans-serif; fill: #8E0C22; }
+          .f5bK { font: 800 12px Inter, sans-serif; fill: #1C1214; }
+          .f5bA { font: 700 11px Inter, sans-serif; fill: #C8102E; }
+          .f5bN { font: 400 12px Inter, sans-serif; fill: #5F4D50; }
+        </style>
+
+        <text class="f5bH" x="30" y="26">THE SAME EIGHT CLUSTERS, THREE DENOMINATORS, THREE MAPS</text>
+
+        <g filter="url(#f5bSk)" fill="none" stroke="#1C1214" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="40" y="50" width="253" height="230" rx="10" transform="rotate(0.3 166 165)" fill="#FFFFFF"/>
+          <rect x="313" y="50" width="253" height="230" rx="10" transform="rotate(-0.3 439 165)" fill="#FFFFFF"/>
+          <rect x="586" y="50" width="253" height="230" rx="10" transform="rotate(0.3 712 165)" fill="#FFFFFF"/>
+
+          <rect x="54" y="86" width="108" height="44" rx="6" transform="rotate(-1.2 108 108)" fill="#EF3340"/>
+          <rect x="170" y="86" width="108" height="44" rx="6" transform="rotate(1 224 108)" fill="#FFFFFF"/>
+          <rect x="54" y="142" width="108" height="44" rx="6" transform="rotate(0.8 108 164)" fill="url(#f5bHc)"/>
+          <rect x="170" y="142" width="108" height="44" rx="6" transform="rotate(-0.9 224 164)" fill="url(#f5bHc)"/>
+          <rect x="54" y="198" width="108" height="44" rx="6" transform="rotate(-0.7 108 220)" fill="#FDF0F1"/>
+          <rect x="170" y="198" width="108" height="44" rx="6" transform="rotate(1.1 224 220)" fill="#FDF0F1"/>
+
+          <rect x="327" y="86" width="108" height="44" rx="6" transform="rotate(1 381 108)" fill="url(#f5bHc)"/>
+          <rect x="443" y="86" width="108" height="44" rx="6" transform="rotate(-1.3 497 108)" fill="#EF3340"/>
+          <rect x="327" y="142" width="108" height="44" rx="6" transform="rotate(-0.8 381 164)" fill="#FDF0F1"/>
+          <rect x="443" y="142" width="108" height="44" rx="6" transform="rotate(0.9 497 164)" fill="url(#f5bHc)"/>
+          <rect x="327" y="198" width="108" height="44" rx="6" transform="rotate(0.7 381 220)" fill="#FDF0F1"/>
+          <rect x="443" y="198" width="108" height="44" rx="6" transform="rotate(-1 497 220)" fill="#FFFFFF"/>
+
+          <rect x="600" y="86" width="108" height="44" rx="6" transform="rotate(-1 654 108)" fill="#EF3340"/>
+          <rect x="716" y="86" width="108" height="44" rx="6" transform="rotate(1.2 770 108)" fill="url(#f5bHc)"/>
+          <rect x="600" y="142" width="108" height="44" rx="6" transform="rotate(0.9 654 164)" fill="url(#f5bHc)"/>
+          <rect x="716" y="142" width="108" height="44" rx="6" transform="rotate(-0.8 770 164)" fill="#FDF0F1"/>
+          <rect x="600" y="198" width="108" height="44" rx="6" transform="rotate(-1.1 654 220)" fill="#FFFFFF"/>
+        </g>
+
+        <text class="f5bA" x="54" y="72">BY CASES PER CLUSTER</text>
+        <text class="f5bL" x="108" y="102" text-anchor="middle">Taman Jurong</text>
+        <text class="f5bK" x="108" y="120" text-anchor="middle">96</text>
+        <text class="f5bL" x="224" y="102" text-anchor="middle">Kian Teck</text>
+        <text class="f5bV" x="224" y="120" text-anchor="middle">2</text>
+        <text class="f5bL" x="108" y="158" text-anchor="middle">Tagore</text>
+        <text class="f5bV" x="108" y="176" text-anchor="middle">18</text>
+        <text class="f5bL" x="224" y="158" text-anchor="middle">Bishan East</text>
+        <text class="f5bV" x="224" y="176" text-anchor="middle">16</text>
+        <text class="f5bL" x="108" y="214" text-anchor="middle">Chinatown</text>
+        <text class="f5bV" x="108" y="232" text-anchor="middle">5</text>
+        <text class="f5bL" x="224" y="214" text-anchor="middle">U. Paya Lebar</text>
+        <text class="f5bV" x="224" y="232" text-anchor="middle">4</text>
+
+        <text class="f5bA" x="327" y="72">PER 100,000 OF THE SUBZONE</text>
+        <text class="f5bL" x="381" y="102" text-anchor="middle">Taman Jurong</text>
+        <text class="f5bV" x="381" y="120" text-anchor="middle">240.5</text>
+        <text class="f5bL" x="497" y="102" text-anchor="middle">Kian Teck</text>
+        <text class="f5bK" x="497" y="120" text-anchor="middle">5,000.0</text>
+        <text class="f5bL" x="381" y="158" text-anchor="middle">Bishan East</text>
+        <text class="f5bV" x="381" y="176" text-anchor="middle">56.5</text>
+        <text class="f5bL" x="497" y="158" text-anchor="middle">Tagore</text>
+        <text class="f5bV" x="497" y="176" text-anchor="middle">226.4</text>
+        <text class="f5bL" x="381" y="214" text-anchor="middle">Chinatown</text>
+        <text class="f5bV" x="381" y="232" text-anchor="middle">47.7</text>
+        <text class="f5bL" x="497" y="214" text-anchor="middle">U. Paya Lebar</text>
+        <text class="f5bV" x="497" y="232" text-anchor="middle">23.6</text>
+
+        <text class="f5bA" x="600" y="72">PER 100,000 OF THE PLANNING AREA</text>
+        <text class="f5bL" x="654" y="102" text-anchor="middle">Jurong West</text>
+        <text class="f5bK" x="654" y="120" text-anchor="middle">37.3</text>
+        <text class="f5bL" x="770" y="102" text-anchor="middle">Outram</text>
+        <text class="f5bV" x="770" y="120" text-anchor="middle">27.3</text>
+        <text class="f5bL" x="654" y="158" text-anchor="middle">Bishan</text>
+        <text class="f5bV" x="654" y="176" text-anchor="middle">18.3</text>
+        <text class="f5bL" x="770" y="158" text-anchor="middle">Ang Mo Kio</text>
+        <text class="f5bV" x="770" y="176" text-anchor="middle">11.1</text>
+        <text class="f5bL" x="654" y="214" text-anchor="middle">Serangoon</text>
+        <text class="f5bV" x="654" y="232" text-anchor="middle">3.4</text>
+
+        <text class="f5bS" x="30" y="304">flag red = the darkest cell on that map · hatched = the next band · pale and white = the lower bands</text>
+        <text class="f5bN" x="30" y="330">Same eight clusters, same day. The darkest cell moves because the denominator moved, not the cases.</text>
+      </svg>
+      <figcaption>🔍 Click to zoom - three true maps of one snapshot; the one Arif gets depends on a sentence Mei has to write under it. Contains information from Dengue Clusters (GEOJSON) and Resident Population by Planning Area/Subzone of Residence, Age Group and Sex (Census of Population 2020) accessed on 2026-10-22 from data.gov.sg which is made available under the terms of the Singapore Open Data Licence version 1.0 https://data.gov.sg/open-data-licence</figcaption>
+    </figure>
+
+    <details class="card">
+      <summary><span class="mode live">Live</span>Rate, denominator and the 40 residents of Kian Teck<span class="mini">3 min</span><span class="caret">▶</span></summary>
+      <div class="body">
+        <p>A rate is a count divided by a population, and the population has to be the population of the same shape as the count. Census 2020 gives resident population by planning area and by subzone, so there is a denominator for both levels: 332 subzone rows whose names match the URA SUBZONE_N field exactly once upper-cased, and 55 planning-area "Total" rows, one of them spelled "Changi- Total" without the space. 46 subzones carry "-" instead of a number. The Census is a count of residents at their place of residence; Kian Teck's 40 is a real figure for a subzone that is mostly not housing. Two cases in a locality whose polygon sits in Kian Teck, divided by 40 residents, gives 5,000 per 100,000, the largest rate on the island by a factor of twenty, from the smallest cluster in the file.</p>
+        <p>That is not an error in the arithmetic. It is a mismatch of shapes: NEA builds a locality from residential and workplace addresses, and the Census counts residents only, so the people the cases are drawn from and the people in the denominator are different sets. "Cases per resident of the subzone" is itself a boundary choice, and the figure that looks like a finding is the figure that most needs the sentence under it saying so.</p>
+      </div>
+    </details>
+
+    <details class="card">
+      <summary><span class="mode self">Self-study</span>Suppressed is not zero: the 46 subzones with no count<span class="mini">3 min</span><span class="caret">▶</span></summary>
+      <div class="body">
+        <p>The Census subzone table carries "-" for 46 of the 332 subzones. The dataset does not say, row by row, whether that means no residents or a figure withheld, so the honest reading is "suppressed or zero is not zero": ship it as null, never as 0. The reason is arithmetic. A zero denominator turns any cluster that lands there into a division error; a small denominator typed in by hand turns it into a rate larger than Kian Teck's. Null keeps the subzone on the map, with a hatched or empty cell and a legend entry that says "no resident count", which is the true state of knowledge. On the 2026-10-22 snapshot none of the eight centroids falls in one of the 46, so the three tables are complete; the code keeps the branch anyway, because the file changes daily and a cluster in an industrial subzone is exactly the case this branch exists for.</p>
+        <p>The second half of this lesson is the planning-area view. Aggregating up smooths everything: Jurong West's 37.3 hides a 5,000 and a 240.5 in one shade. That is the modifiable areal unit problem (Openshaw 1984, reported), and the depth of it, with sensor placement and what aggregation does for privacy, is taught next door: <a href="https://phoebefu6.github.io/learn-smart-city-with-phoebe/courses/p2-zones-joins-and-the-map.html">Smart City, zones, joins and the map</a> and <a href="https://phoebefu6.github.io/learn-smart-city-with-phoebe/courses/p7-aggregation-and-privacy.html">aggregation and privacy</a>. How to colour a choropleth so the legend carries the denominator is Dataviz's: <a href="https://phoebefu6.github.io/learn-dataviz-with-phoebe/courses/04-colour-that-works.html">colour that works</a> and <a href="https://phoebefu6.github.io/learn-dataviz-with-phoebe/courses/02-choosing-the-form.html">choosing the form</a>.</p>
+      </div>
+    </details>
+
+    <div class="callout example">
+      <span class="ex-pill">Real world</span>
+      <p><strong>Priya's one question (constructed).</strong> Mei brings Priya the three maps. Priya does not ask which is right. She asks what sentence goes under each one, and whether Arif's team can act on the shape that is coloured. A planning area is too big to send anyone to; a subzone with 40 residents and a rate of 5,000 is a number about a denominator, not a place to go. The map that gets printed is the first one, cases per cluster, with the cluster polygons drawn as polygons and NEA's page linked for what the colours mean. The other two go in the appendix with their denominators written out. That is the desk's rule: a coloured map is never shipped without the division written under it.</p>
+    </div>
+  </section>
+
+  <section class="section" id="part-3">
+    <div class="section-kicker">
+      <span class="klabel">Part 3 · covers why COVID is not on the page</span>
+      <h2>The dataset that is not there</h2>
+      <span class="tag concept">4 min live</span>
+    </div>
+    <p class="lede">Rivermont is constructed; the absence described here is real and is taught as reported. Arif's first draft of the question was about COVID, not dengue, because that is the disease everyone has a map of in their head. Mei looked for the data and found three things, each of which is a reason the page uses dengue clusters instead, and each of which is a general lesson about what makes a disease dataset usable for geometry at all: a location field, a licence, and a shape that is a locality rather than a person.</p>
+
+    <figure class="zoomable">
+      <svg viewBox="0 0 880 300" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Three boxes in a row, each labelled reported: MOH open COVID tables carry dates and counts with no location field; the 2020 places-visited map was a visualisation, not a dataset; third-party scrapes are case-level and unlicensed. Three arrows lead down to one wide flag-red box: NEA Dengue Clusters (GEOJSON), open, licensed and location-bearing, polygons by design, a locality built from addresses and never an address. The note says these were reported in the approved brief on 2026-10-22 and should be checked at source before being repeated.">
+        <defs>
+          <filter id="f5cSk" x="-3%" y="-3%" width="106%" height="106%"><feTurbulence type="fractalNoise" baseFrequency="0.02" numOctaves="2" seed="67" result="n"/><feDisplacementMap in="SourceGraphic" in2="n" scale="2.4" xChannelSelector="R" yChannelSelector="G"/></filter>
+          <marker id="f5cAr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M1 1 L9 5 L1 9" fill="none" stroke="#1C1214" stroke-width="1.6" stroke-linecap="round"/></marker>
+        </defs>
+        <style>
+          .f5cH { font: 800 12px Inter, sans-serif; fill: #1C1214; }
+          .f5cL { font: 600 12px Inter, sans-serif; fill: #1C1214; }
+          .f5cS { font: 400 11px Inter, sans-serif; fill: #5F4D50; }
+          .f5cB { font: 800 11px Inter, sans-serif; fill: #8E0C22; }
+          .f5cA { font: 700 11px Inter, sans-serif; fill: #C8102E; }
+          .f5cN { font: 400 12px Inter, sans-serif; fill: #5F4D50; }
+        </style>
+
+        <text class="f5cH" x="30" y="26">THREE REASONS THE OBVIOUS DATASET IS ABSENT, AND WHAT STANDS IN</text>
+
+        <g filter="url(#f5cSk)" fill="none" stroke="#1C1214" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="40" y="50" width="260" height="80" rx="10" transform="rotate(-0.6 170 90)" fill="#FFFFFF"/>
+          <rect x="310" y="50" width="260" height="80" rx="10" transform="rotate(0.5 440 90)" fill="#FFFFFF"/>
+          <rect x="580" y="50" width="260" height="80" rx="10" transform="rotate(-0.5 710 90)" fill="#FFFFFF"/>
+          <path d="M170 134 L170 166" marker-end="url(#f5cAr)"/>
+          <path d="M440 134 L440 166" marker-end="url(#f5cAr)"/>
+          <path d="M710 134 L710 166" marker-end="url(#f5cAr)"/>
+          <rect x="40" y="170" width="800" height="70" rx="10" transform="rotate(0.2 440 205)" fill="#EF3340"/>
+        </g>
+
+        <text class="f5cL" x="56" y="74">MOH open COVID tables</text>
+        <text class="f5cS" x="56" y="94">dates and counts, no location field</text>
+        <text class="f5cA" x="56" y="116">reported</text>
+        <text class="f5cL" x="326" y="74">The 2020 places-visited map</text>
+        <text class="f5cS" x="326" y="94">a visualisation, not a dataset</text>
+        <text class="f5cA" x="326" y="116">reported</text>
+        <text class="f5cL" x="596" y="74">Third-party scrapes</text>
+        <text class="f5cS" x="596" y="94">case-level and unlicensed</text>
+        <text class="f5cA" x="596" y="116">reported</text>
+
+        <text class="f5cL" x="440" y="198" text-anchor="middle">NEA Dengue Clusters (GEOJSON): open, licensed, location-bearing</text>
+        <text class="f5cL" x="440" y="220" text-anchor="middle">polygons by design: a locality built from addresses, never an address</text>
+
+        <text class="f5cN" x="30" y="274">Reported in the approved brief, 2026-10-22; check each of the three at source before you repeat it.</text>
+      </svg>
+      <figcaption>🔍 Click to zoom - the red box is the only one of the four with all three properties at once, which is why it is the one on the page</figcaption>
+    </figure>
+
+    <details class="card">
+      <summary><span class="mode live">Live</span>Three things a disease dataset needs before it can be joined<span class="mini">3 min</span><span class="caret">▶</span></summary>
+      <div class="body">
+        <p>Reported, as stated in the approved brief of 2026-10-22 and to be re-verified at source by anyone who repeats it: MOH's open COVID datasets carry dates and counts and no location field, so there is nothing to join to a subzone; the 2020 map of places visited by cases was a visualisation rather than a downloadable dataset, so there is a picture and no rows; and the third-party scrapes that circulated are case-level data with no licence, so even where rows exist, nobody has the right to publish a join built on them. Each is a separate failure. The first is a schema problem, the second a publishing problem, the third a licensing problem, and a dataset has to pass all three before a desk can draw it.</p>
+        <p>Dengue clusters pass all three. They are open, under the Singapore Open Data Licence v1.0; they carry geometry; and the geometry is a polygon by design, a locality built from residential and workplace addresses with the addresses themselves never published. That last property is the one worth copying into any desk's own publishing. The privacy side of aggregation is taught in Smart City (<a href="https://phoebefu6.github.io/learn-smart-city-with-phoebe/courses/p7-aggregation-and-privacy.html">aggregation and privacy</a>, <a href="https://phoebefu6.github.io/learn-smart-city-with-phoebe/courses/p8-publishing-open-data.html">publishing open data</a>); the law behind it is <a href="https://phoebefu6.github.io/learn-pdpa-dnc-with-phoebe/">PDPA</a> here and <a href="https://phoebefu6.github.io/learn-gdpr-with-phoebe/">GDPR</a> elsewhere.</p>
+      </div>
+    </details>
+
+    <details class="card">
+      <summary><span class="mode self">Self-study</span>A snapshot is one day: what the daily file does to a time series<span class="mini">2 min</span><span class="caret">▶</span></summary>
+      <div class="body">
+        <p>The NEA file is overwritten daily and the dataset page does not serve history. Everything on this page is the 2026-10-22 download, and a learner who downloads tomorrow will see different clusters, different counts and possibly different subzones; the build-along prints "your numbers will differ" wherever that matters. A desk that wants a series has to keep its own dated copies, one file per day, with the access date in the licence notice of each. Gaps, overwrites and the clock behind a daily file are their own subject, taught in <a href="https://phoebefu6.github.io/learn-iot-data-with-phoebe/courses/p2-clocks-sampling-and-resampling.html">IoT data, clocks, sampling and resampling</a>.</p>
+      </div>
+    </details>
+
+    <div class="callout tip">
+      <p><strong>Write the absence down.</strong> "No location field in the MOH open tables, checked on this date" is a finding, and it belongs in the notes with the same care as a number. The next person to be asked for a COVID map will otherwise spend the same afternoon looking.</p>
+    </div>
+  </section>
+
+  <section class="section" id="demo-1">
+    <div class="section-kicker">
+      <span class="klabel">Build-along</span>
+      <h2>One join, three tables</h2>
+      <span class="tag demo">★ 22 min · everyone builds</span>
+    </div>
+    <p class="lede">Mei (Rivermont is constructed) has four real files in an empty download folder: the NEA clusters snapshot, the URA subzones, the Census 2020 population table, and her notes file with a licence line per dataset. Tonight she joins the clusters to subzones by centroid, looks up two denominators, and prints the three tables from Part 2. Standard library and <code>math</code> only; the point-in-polygon and centroid functions are the ones from sessions 2 and 4. The printed outputs are the real ones for the 2026-10-22 snapshot. The NEA file changes every day, so if you downloaded later, your cluster rows will differ and the page says so where it matters.</p>
+
+    <figure class="zoomable">
+      <svg viewBox="0 0 880 290" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="A five-step pipeline drawn as boxes with arrows: the clusters file with 8 shapes and 141 cases; centroid, area-weighted in degrees; point in subzone by even-odd over 332 zones; denominator from Census 2020 where a dash is null and not zero, this box filled flag red because it is where a missing count must be handled; and three tables of cases and two rates. A dashed arrow from the red box leads to a note: 46 subzones have no count, skip them and say so.">
+        <defs>
+          <filter id="f5dSk" x="-3%" y="-3%" width="106%" height="106%"><feTurbulence type="fractalNoise" baseFrequency="0.02" numOctaves="2" seed="73" result="n"/><feDisplacementMap in="SourceGraphic" in2="n" scale="2.4" xChannelSelector="R" yChannelSelector="G"/></filter>
+          <marker id="f5dAr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M1 1 L9 5 L1 9" fill="none" stroke="#1C1214" stroke-width="1.6" stroke-linecap="round"/></marker>
+        </defs>
+        <style>
+          .f5dH { font: 800 12px Inter, sans-serif; fill: #1C1214; }
+          .f5dL { font: 600 12px Inter, sans-serif; fill: #1C1214; }
+          .f5dS { font: 400 11px Inter, sans-serif; fill: #5F4D50; }
+          .f5dB { font: 800 11px Inter, sans-serif; fill: #8E0C22; }
+          .f5dN { font: 400 12px Inter, sans-serif; fill: #5F4D50; }
+        </style>
+
+        <text class="f5dH" x="30" y="26">THE DESK'S JOIN: THE DENOMINATOR IS WHERE A MISSING COUNT HAS TO BE HANDLED</text>
+
+        <g filter="url(#f5dSk)" fill="none" stroke="#1C1214" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="40" y="90" width="144" height="60" rx="10" transform="rotate(-0.8 112 120)" fill="#FFFFFF"/>
+          <rect x="204" y="90" width="144" height="60" rx="10" transform="rotate(0.6 276 120)" fill="#FDF0F1"/>
+          <rect x="368" y="90" width="144" height="60" rx="10" transform="rotate(-0.5 440 120)" fill="#FDF0F1"/>
+          <rect x="532" y="90" width="144" height="60" rx="10" transform="rotate(0.7 604 120)" fill="#EF3340"/>
+          <rect x="696" y="90" width="144" height="60" rx="10" transform="rotate(-0.6 768 120)" fill="#FFFFFF"/>
+          <path d="M186 120 L202 120" marker-end="url(#f5dAr)"/>
+          <path d="M350 120 L366 120" marker-end="url(#f5dAr)"/>
+          <path d="M514 120 L530 120" marker-end="url(#f5dAr)"/>
+          <path d="M678 120 L694 120" marker-end="url(#f5dAr)"/>
+          <path d="M604 154 C604 176 604 186 604 196" marker-end="url(#f5dAr)" stroke="#8E0C22" stroke-dasharray="5 4"/>
+        </g>
+
+        <text class="f5dL" x="112" y="116" text-anchor="middle">1 · clusters file</text>
+        <text class="f5dS" x="112" y="134" text-anchor="middle">8 shapes, 141 cases</text>
+        <text class="f5dL" x="276" y="116" text-anchor="middle">2 · centroid</text>
+        <text class="f5dS" x="276" y="134" text-anchor="middle">area-weighted, deg</text>
+        <text class="f5dL" x="440" y="116" text-anchor="middle">3 · point in subzone</text>
+        <text class="f5dS" x="440" y="134" text-anchor="middle">even-odd, 332 zones</text>
+        <text class="f5dL" x="604" y="116" text-anchor="middle">4 · denominator</text>
+        <text class="f5dL" x="604" y="134" text-anchor="middle">"-" is null, not 0</text>
+        <text class="f5dL" x="768" y="116" text-anchor="middle">5 · three tables</text>
+        <text class="f5dS" x="768" y="134" text-anchor="middle">cases, two rates</text>
+        <text class="f5dB" x="604" y="218" text-anchor="middle">46 subzones have no count</text>
+        <text class="f5dS" x="604" y="234" text-anchor="middle">skip the rate there, and say so in the table</text>
+
+        <text class="f5dN" x="30" y="264">Steps 2 and 3 are session 2 and session 4 code. Step 4 is the only new decision, and it is a branch, not a number.</text>
+      </svg>
+      <figcaption>🔍 Click to zoom - the red box can produce a null; every table downstream has to be able to print one. Contains information from Dengue Clusters (GEOJSON), Master Plan 2019 Subzone Boundary (No Sea) (GEOJSON) and Resident Population by Planning Area/Subzone of Residence, Age Group and Sex (Census of Population 2020) accessed on 2026-10-22 from data.gov.sg which is made available under the terms of the Singapore Open Data Licence version 1.0 https://data.gov.sg/open-data-licence</figcaption>
+    </figure>
+
+    <div class="steps">
+      <div class="step">
+        <p><strong>Open the snapshot and read the types from the file, not the page.</strong> The clusters dataset is <code>d_dbfabf16158d1b0e1c420627c0819168</code> (NEA, Dengue Clusters, GEOJSON). Mei runs Python with <code>-I</code> from outside the download folder, prints the count, the case sizes and the Python type of the three columns the page types as Numeric.</p>
+        <div class="prompt-box good"><span class="label">★ Step 1 · open it</span>import json, sys, math, csv
+cl = json.load(open(sys.argv[1], encoding="utf-8"))      # clusters snapshot
+sz = json.load(open(sys.argv[2], encoding="utf-8"))      # URA subzones
+print(len(cl["features"]), "clusters;", len(sz["features"]), "subzones")
+sizes = sorted((int(p["properties"]["CASE_SIZE"]) for p in cl["features"]), reverse=True)
+print(sizes, sum(sizes))
+p0 = cl["features"][0]["properties"]
+print({k: type(p0[k]).__name__ for k in ("HOMES", "PUBLIC_PLACES", "CONSTRUCTION_SITES")})
+
+# run:  python3 -I join_clusters.py downloads/d_dbfabf16158d1b0e1c420627c0819168.geojson downloads/d_8594ae9ff96d0c708bc2af633048edfb.geojson downloads/census2020.csv
+# 8 clusters; 332 subzones
+# [96, 16, 13, 5, 4, 3, 2, 2] 141
+# the three types print as str or NoneType, never int: the page says Numeric, the file says text or null
+# (downloaded after 2026-10-22: your cluster count and sizes will differ; the file changes daily)</div>
+      </div>
+      <div class="step">
+        <p><strong>Centroid and point-in-polygon, from sessions 2 and 4.</strong> Area-weighted planar centroid over every ring of every polygon in a feature, holes subtracted, in degrees; even-odd ray casting over every ring so holes need no special case. Both are copied in, not rewritten.</p>
+        <div class="prompt-box good"><span class="label">★ Step 2 · the two functions</span>def rings(geom):                                   # every ring, with +1 for outer and -1 for holes
+    polys = [geom["coordinates"]] if geom["type"] == "Polygon" else geom["coordinates"]
+    for poly in polys:
+        for i, ring in enumerate(poly):
+            yield ring, (1 if i == 0 else -1)
+
+def centroid(geom):                                # area-weighted, outer rings minus holes
+    A = Cx = Cy = 0.0
+    for ring, sgn in rings(geom):
+        for (x1, y1), (x2, y2) in zip(ring, ring[1:] + ring[:1]):
+            cross = x1 * y2 - x2 * y1
+            A += sgn * cross; Cx += sgn * (x1 + x2) * cross; Cy += sgn * (y1 + y2) * cross
+    return Cx / (3 * A), Cy / (3 * A)
+
+def inside(x, y, geom):                            # even-odd over every ring
+    hit = False
+    for ring, _ in rings(geom):
+        for (x1, y1), (x2, y2) in zip(ring, ring[1:] + ring[:1]):
+            if (y1 &gt; y) != (y2 &gt; y) and x &lt; x1 + (y - y1) * (x2 - x1) / (y2 - y1):
+                hit = not hit
+    return hit</div>
+      </div>
+      <div class="step">
+        <p><strong>Join each cluster to one subzone, and check the centroid is inside its own polygon.</strong> The second check is the one from session 2: a concave locality can have a centroid outside itself. On this snapshot all eight pass; the branch stays, because tomorrow's file is a different file.</p>
+        <div class="prompt-box good"><span class="label">★ Step 3 · the join</span>def strip(coords):                                 # drop any altitude value so pairs unpack cleanly
+    return [[[c[0], c[1]] for c in ring] for ring in coords]
+
+for f in sz["features"] + cl["features"]:
+    g = f["geometry"]
+    g["coordinates"] = strip(g["coordinates"]) if g["type"] == "Polygon" else [strip(p) for p in g["coordinates"]]
+
+joined = []
+for c in cl["features"]:
+    x, y = centroid(c["geometry"])
+    own = inside(x, y, c["geometry"])
+    home = [s["properties"] for s in sz["features"] if inside(x, y, s["geometry"])]
+    assert len(home) == 1, ("a centroid in 0 or 2 subzones", c["properties"]["LOCALITY"])
+    joined.append((home[0]["SUBZONE_N"], home[0]["PLN_AREA_N"], int(c["properties"]["CASE_SIZE"]), own))
+
+for row in sorted(joined, key=lambda r: -r[2]):
+    print(f"{row[0]:&lt;18} {row[1]:&lt;12} {row[2]:&gt;4}  centroid inside own polygon: {row[3]}")
+
+# TAMAN JURONG       JURONG WEST    96  centroid inside own polygon: True
+# BISHAN EAST        BISHAN         16  centroid inside own polygon: True
+# TAGORE             ANG MO KIO     13  centroid inside own polygon: True
+# CHINATOWN          OUTRAM          5  centroid inside own polygon: True
+# UPPER PAYA LEBAR   SERANGOON       4  centroid inside own polygon: True
+# TAGORE             ANG MO KIO      3  centroid inside own polygon: True
+# TAGORE             ANG MO KIO      2  centroid inside own polygon: True
+# KIAN TECK          JURONG WEST     2  centroid inside own polygon: True</div>
+      </div>
+      <div class="step">
+        <p><strong>Read the denominators, and keep "-" as None.</strong> The Census table is <code>d_d95ae740c0f8961a0b10435836660ce0</code> (SingStat, Census of Population 2020, resident population by planning area and subzone). It has 388 rows after the header: one national total, 55 planning-area "Total" rows, 332 subzone rows whose names match SUBZONE_N once upper-cased. Print the header and set <code>TOTAL</code> to the index of the all-ages, both-sexes total column: the shape of the rows is recorded, the header text is yours to read from your file.</p>
+        <div class="prompt-box good"><span class="label">★ Step 4 · denominators</span>rows = list(csv.reader(open(sys.argv[3], encoding="utf-8-sig")))
+header, body = rows[0], rows[1:]
+print(header); print(len(body), "rows")              # 388 rows
+NAME, TOTAL = 0, header.index("...")                # set TOTAL from the header you just printed
+
+pop = {}
+for r in body:
+    key = " ".join(r[NAME].upper().replace("- TOTAL", " - TOTAL").split())   # "Changi- Total" has no space
+    v = r[TOTAL].strip().replace(",", "")
+    pop[key] = None if v in ("-", "") else int(v)   # "-" is suppressed or zero: null, never 0
+
+print(pop["TAMAN JURONG"], pop["KIAN TECK"], pop["JURONG WEST - TOTAL"])     # 39920 40 262730
+print(sum(1 for k, v in pop.items() if v is None and not k.endswith("TOTAL")), "subzones with no count")   # 46 subzones with no count
+print(pop["TOTAL"] if "TOTAL" in pop else "national total row: read its label from your header")   # 4044210</div>
+      </div>
+      <div class="step">
+        <p><strong>Print the three tables.</strong> Cases per cluster, cases per 100,000 residents of the subzone, cases per 100,000 of the planning area. Where a denominator is None the rate prints as "no count", which is the branch the red box in the figure is for.</p>
+        <div class="prompt-box good"><span class="label">★ Step 5 · three tables</span>def rate(cases, people):
+    return f"{100000 * cases / people:8.1f}" if people else "no count"
+
+by_sz, by_pa = {}, {}
+for s, a, n, _ in joined:
+    by_sz[(s, a)] = by_sz.get((s, a), 0) + n
+    by_pa[a] = by_pa.get(a, 0) + n
+
+print("subzone            area          cases  residents  per 100,000")
+for (s, a), n in sorted(by_sz.items(), key=lambda kv: -kv[1]):
+    print(f"{s:&lt;18} {a:&lt;12} {n:&gt;5}  {str(pop.get(s)):&gt;9}  {rate(n, pop.get(s))}")
+
+print("\nplanning area  cases  residents  per 100,000")
+for a, n in sorted(by_pa.items(), key=lambda kv: -kv[1]):
+    print(f"{a:&lt;13} {n:&gt;5}  {str(pop.get(a + ' - TOTAL')):&gt;9}  {rate(n, pop.get(a + ' - TOTAL'))}")
+
+# subzone            area          cases  residents  per 100,000
+# TAMAN JURONG       JURONG WEST      96      39920     240.5
+# TAGORE             ANG MO KIO       18       7950     226.4
+# BISHAN EAST        BISHAN           16      28310      56.5
+# CHINATOWN          OUTRAM            5      10490      47.7
+# UPPER PAYA LEBAR   SERANGOON         4      16920      23.6
+# KIAN TECK          JURONG WEST       2         40    5000.0
+#
+# planning area  cases  residents  per 100,000
+# JURONG WEST       98     262730      37.3
+# ANG MO KIO        18     162280      11.1
+# BISHAN            16      87320      18.3
+# OUTRAM             5      18340      27.3
+# SERANGOON          4     116900       3.4</div>
+      </div>
+    </div>
+
+    <div class="callout tip">
+      <p><strong>The table carries the denominator in its header, or it does not leave the desk.</strong> Mei's three tables each say "per 100,000 residents of the subzone, Census 2020" or "per 100,000 residents of the planning area, Census 2020" in the column name, and the Kian Teck row carries a note that the subzone has 40 residents. A rate without its denominator written next to it is the same unverified claim as a coordinate without its reference system.</p>
+    </div>
+  </section>
+
+  <section class="section" id="exercise">
+    <div class="section-kicker">
+      <span class="klabel">Homework</span>
+      <h2>Before session 6</h2>
+      <span class="tag exercise">30 min</span>
+    </div>
+    <ol>
+      <li><strong>Download tomorrow's NEA file</strong> into a new dated folder and run the join again. Write down what changed: cluster count, total cases, which subzones. Keep both files; a series is dated copies, nothing else.</li>
+      <li><strong>Replace the centroid rule</strong> with "the subzone that holds the largest share of the cluster's bounding box" and see whether any of the eight moves. Write the rule you used in the table header, whichever it is.</li>
+      <li><strong>Find a count at work that gets coloured on a map</strong> and write down its denominator. If nobody can name one, the map is a map of counts and its legend should say so.</li>
+      <li><strong>Pick one of the three reported COVID reasons</strong> from Part 3 and check it at source yourself: open the MOH open dataset and list its columns. Record the date you looked. Session 6 is the bench night, and every claim on it was checked the same way.</li>
+    </ol>
+  </section>
+
+  <section class="section" id="quiz">
+    <div class="section-kicker">
+      <span class="klabel">Check yourself</span>
+      <h2>Three questions</h2>
+    </div>
+    <p>Clear all three and session 5 gets stamped in your passport.</p>
+
+    <div class="quiz-q" data-answer="1">
+      <p class="qtext">1 · On the 2026-10-22 snapshot, Kian Teck shows 5,000 cases per 100,000 residents and Taman Jurong next door shows 240.5. What is the right reading?</p>
+      <button class="qopt" type="button">A · Kian Teck has twenty times the dengue problem of Taman Jurong</button>
+      <button class="qopt" type="button">B · Kian Teck has 2 cases and 40 Census residents; the rate is a statement about a tiny denominator in a mostly non-residential subzone, and the table must say so</button>
+      <button class="qopt" type="button">C · The Census figure for Kian Teck must be wrong and should be replaced by an estimate</button>
+      <button class="qopt" type="button">D · Rates should never be computed at subzone level</button>
+      <p class="qwhy">Both numbers are correct arithmetic from real data. A reads a denominator effect as a finding; C invents a number; D throws away a useful level. The honest move is B: print the residents next to the rate and write the denominator into the header.</p>
+    </div>
+
+    <div class="quiz-q" data-answer="3">
+      <p class="qtext">2 · The Census 2020 subzone table carries "-" for 46 of the 332 subzones. How should a join handle them?</p>
+      <button class="qopt" type="button">A · Treat "-" as 0 so every subzone gets a rate</button>
+      <button class="qopt" type="button">B · Drop the 46 subzones from the map</button>
+      <button class="qopt" type="button">C · Fill them with the planning-area average</button>
+      <button class="qopt" type="button">D · Keep them as null: suppressed or zero is not zero, so any cluster landing there prints "no count" and the legend says so</button>
+      <p class="qwhy">A zero denominator is a division error at best and a rate of infinity at worst; dropping or filling the rows hides the state of knowledge. Null keeps the subzone on the map with an honest cell.</p>
+    </div>
+
+    <div class="quiz-q" data-answer="0">
+      <p class="qtext">3 · Why does this page join NEA dengue clusters rather than COVID cases to the subzones?</p>
+      <button class="qopt" type="button">A · The dengue clusters are open, licensed, carry geometry, and are polygons by design; the COVID open tables have no location field, the 2020 map was a visualisation, and scrapes are unlicensed (reported)</button>
+      <button class="qopt" type="button">B · Dengue is the more serious disease</button>
+      <button class="qopt" type="button">C · COVID data is in a different coordinate reference system</button>
+      <button class="qopt" type="button">D · NEA publishes exact case addresses, which makes the join easier</button>
+      <p class="qwhy">B is a health judgement this page does not make. C invents a technical reason. D is the opposite of what NEA does: a cluster is a locality built from addresses, with the addresses never published, which is exactly the property that makes it usable.</p>
+    </div>
+
+    <p class="quiz-score"></p>
+  </section>
+
+  <section class="section" id="official">
+    <div class="section-kicker">
+      <span class="klabel">Sources covered</span>
+      <h2>What this session teaches, and where it came from</h2>
+    </div>
+    <div class="covered">
+      <div class="covered-row"><span class="status pill solid">✓</span><span class="name">National Environment Agency. Dengue Clusters (GEOJSON). data.gov.sg dataset d_dbfabf16158d1b0e1c420627c0819168, snapshot accessed 2026-10-22. Singapore Open Data Licence v1.0.</span><span class="note">Read in the file and on the dataset page, 2026-10-22: 8 clusters, case sizes 96, 16, 13, 5, 4, 3, 2, 2, total 141; HOMES, PUBLIC_PLACES and CONSTRUCTION_SITES typed Numeric on the page, text or null in the file</span></div>
+      <div class="covered-row"><span class="status pill solid">✓</span><span class="name">National Environment Agency. Dengue Clusters. https://www.nea.gov.sg/dengue-zika/dengue/dengue-clusters (read 2026-10-22).</span><span class="note">The definition of a cluster, the three alert levels, "map data is updated at 1am" and "residential and workplace addresses" are quoted as written; nothing about risk or prevention is restated</span></div>
+      <div class="covered-row"><span class="status pill solid">✓</span><span class="name">Singapore Department of Statistics. Resident Population by Planning Area/Subzone of Residence, Age Group and Sex (Census of Population 2020). data.gov.sg dataset d_d95ae740c0f8961a0b10435836660ce0, last updated 2021-06-18, accessed 2026-10-22. Singapore Open Data Licence v1.0.</span><span class="note">388 rows: national total 4,044,210, 55 "- Total" planning-area rows ("Changi- Total" without the space), 332 subzone rows matching SUBZONE_N after upper-casing; 46 subzones carry "-", shipped as null</span></div>
+      <div class="covered-row"><span class="status pill solid">✓</span><span class="name">Urban Redevelopment Authority. Master Plan 2019 Subzone Boundary (No Sea) (GEOJSON). data.gov.sg dataset d_8594ae9ff96d0c708bc2af633048edfb, last updated 2025-12-03, accessed 2026-10-22. Singapore Open Data Licence v1.0.</span><span class="note">332 subzones in 55 planning areas, the join target; PLN_AREA_N carries each subzone's planning area</span></div>
+      <div class="covered-row"><span class="status pill solid">✓</span><span class="name">The joined snapshot and the three tables</span><span class="note">Computed by the session 6 engine and the Python reference on the shipped geometry: Jurong West 98 / 262,730 / 37.3; Outram 5 / 18,340 / 27.3; Bishan 16 / 87,320 / 18.3; Ang Mo Kio 18 / 162,280 / 11.1; Serangoon 4 / 116,900 / 3.4; Kian Teck 2 / 40 / 5,000.0; Taman Jurong 96 / 39,920 / 240.5</span></div>
+      <div class="covered-row"><span class="status pill light">◐</span><span class="name">Why COVID is not on the page</span><span class="note">Reported: stated in the approved brief of 2026-10-22 (no location field in MOH open tables; the 2020 map a visualisation; scrapes unlicensed); to be re-verified at source before being repeated</span></div>
+      <div class="covered-row"><span class="status pill light">◐</span><span class="name">Openshaw, S. (1984). The Modifiable Areal Unit Problem. CATMOG 38. Geo Books, Norwich (reported).</span><span class="note">One line here; depth is Smart City's</span></div>
+      <div class="covered-row"><span class="status pill light">◐</span><span class="name">Rivermont, Mei, Arif and Priya</span><span class="note">Constructed for teaching; no number about them is a measurement</span></div>
+    </div>
+    <p class="mono" style="margin-top:14px">Every fact on this page, and its verification tier, is recorded in the course's source map.</p>
+  </section>
+
+  <section class="cheat" id="cheatsheet">
+    <h3>Session 5 cheat sheet <span>· pin this</span></h3>
+    <div class="grid-2">
+      <div class="cheat-item"><b>A cluster is a locality</b><span>NEA: two or more cases with onset within 14 days, within 150 m; built from residential and workplace addresses. A polygon, never an address.</span></div>
+      <div class="cheat-item"><b>Join by centroid, say so</b><span>Each cluster lands in one subzone and one planning area; all its cases go there. Write the rule in the table header.</span></div>
+      <div class="cheat-item"><b>Three denominators, three maps</b><span>Cases per cluster; per 100,000 of the subzone; per 100,000 of the planning area. Same eight shapes, the dark cell moves.</span></div>
+      <div class="cheat-item"><b>Kian Teck</b><span>2 cases, 40 residents, 5,000 per 100,000. A statement about a denominator. Print the residents next to every rate.</span></div>
+      <div class="cheat-item"><b>Suppressed is not zero</b><span>46 subzones carry "-": null, never 0. The rate prints "no count" and the legend says so.</span></div>
+      <div class="cheat-item"><b>Three things a disease dataset needs</b><span>A location field, a licence, and a shape that is a locality rather than a person. Write down the absence when one is missing.</span></div>
+    </div>
+  </section>
+
+  <div class="callout next">
+    <span class="nx-pill">Next session</span>
+    <p>Mei has joined, divided and labelled. Session 6 is the bench night: the full ladder from raw degrees to the grid index computed live on the shipped geometry, point-in-polygon three ways, the lever that moves the island to 60 deg N, the button that swaps latitude and longitude, and the Python reference agreeing with the browser on 142 values.</p>
+  </div>
+
+  <footer class="pagefoot">
+    <span>Session 5 of 6 · learn-geospatial-with-phoebe · by Phoebe Fu &nbsp;·&nbsp; 📚 <a href="https://phoebefu6.github.io/learn-with-phoebe/">Learn with Phoebe ↗</a></span>
+    <span><a href="04-spatial-joins-grid-index.html">← Prev: Spatial joins and the grid index</a> &nbsp;·&nbsp; <a href="06-the-distance-and-join-bench.html">Next: The distance-and-join bench →</a></span>
+  </footer>
+
+</main>
+
+<script src="../assets/app.js?v=1"></script>
+</body>
+</html>

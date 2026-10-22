@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- social:start -->
+<meta name="description" content="Six sessions on reading a location as a claim: the reference system behind two numbers, the boundary that turns a point into a zone, and the distance formula that can be out by three metres or two kilometres. Real Singapore open data (URA subzones, MRT exits, dengue clusters, Census 2020), a constructed town-council data desk, and a bench that computes 203,516 pairs in your browser. Free, by Phoebe Fu.">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Learn with Phoebe">
+<meta property="og:title" content="Learn Geospatial Data with Phoebe">
+<meta property="og:description" content="A location is a claim with a reference system, a boundary and a distance formula behind it, and each can be wrong silently. Six sessions on real Singapore open data, with a bench that measures every shortcut.">
+<meta property="og:url" content="https://phoebefu6.github.io/learn-geospatial-with-phoebe/">
+<meta property="og:image" content="https://phoebefu6.github.io/learn-geospatial-with-phoebe/assets/og-cover.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Learn Geospatial Data with Phoebe">
+<meta name="twitter:description" content="332 subzones, 613 MRT exits, five ways to measure a distance, and the one that is right.">
+<meta name="twitter:image" content="https://phoebefu6.github.io/learn-geospatial-with-phoebe/assets/og-cover.png">
+<!-- social:end -->
+<title>Learn Geospatial Data with Phoebe</title>
+<link rel="stylesheet" href="assets/style.css?v=2">
+<style>
+
+  .stats-row { display: flex; gap: 2.4rem; margin-top: 1.5rem; flex-wrap: wrap; }
+  .stat b { display: block; font-size: 2.1rem; font-weight: 800; line-height: 1.05; font-variant-numeric: tabular-nums; color: var(--indigo-deep); }
+  .stat span { font-size: .72rem; opacity: 1; text-transform: uppercase; letter-spacing: .09em; font-weight: 600; color: var(--muted); }
+
+  .course-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr)); gap: 1rem; margin-top: 1.5rem; }
+  .course-card {
+    border: 1px solid var(--hairline);
+    border-top: 4px solid var(--diff, var(--indigo));
+    border-radius: var(--radius);
+    padding: 1.2rem 1.3rem 1.1rem;
+    display: flex;
+    flex-direction: column;
+    gap: .5rem;
+    text-decoration: none;
+    color: var(--ink);
+    background: #fff;
+    transition: box-shadow .15s ease, border-color .15s ease, transform .15s ease;
+    position: relative;
+  }
+  .course-card:hover { border-color: var(--indigo-soft); border-top-color: var(--diff, var(--indigo)); box-shadow: 0 8px 28px rgba(var(--shadow-rgb),.16); transform: translateY(-3px); }
+  .course-card .cicon { font-size: 1.7rem; line-height: 1; }
+  .course-card .cnum { font-size: .72rem; font-weight: 700; color: var(--indigo); text-transform: uppercase; letter-spacing: .1em; }
+  .course-card h3 { font-size: 1.05rem; font-weight: 800; line-height: 1.3; }
+  .course-card p { font-size: .85rem; color: var(--muted); flex: 1; }
+  .course-card .meta { display: flex; gap: .4rem; flex-wrap: wrap; }
+
+  .diff-legend { display: flex; gap: 1rem; margin-top: 1.6rem; font-size: .74rem; color: var(--muted); font-weight: 600; flex-wrap: wrap; }
+  .diff-legend i { display: inline-block; width: .85rem; height: .35rem; border-radius: 999px; margin-right: .35rem; vertical-align: middle; }
+
+  .paths { margin-top: 2.6rem; }
+  .paths h2 { font-size: 1.3rem; font-weight: 800; margin-bottom: .3rem; }
+  .paths .plede { color: var(--muted); font-size: .92rem; margin-bottom: .8rem; }
+  .path { display: flex; gap: .55rem; align-items: center; padding: .75rem 0; border-bottom: .5px solid var(--hairline); flex-wrap: wrap; }
+  .path:last-child { border-bottom: none; }
+  .path b { min-width: 15.5rem; font-size: .9rem; }
+  .path .pstep { background: var(--indigo-50); color: var(--indigo-deep); border-radius: 999px; padding: .16rem .68rem; font-weight: 700; font-size: .8rem; text-decoration: none; transition: all .12s ease; }
+  .path .pstep:hover { background: var(--indigo); color: #fff; }
+  .path .parr { color: var(--muted); font-weight: 700; }
+
+  .mm-section { margin-top: 1.6rem; }
+  .mm-section h2 { font-size: 1.3rem; font-weight: 800; margin-bottom: .2rem; }
+  .mm-section .mm-lede { color: var(--muted); font-size: .92rem; margin-bottom: .4rem; }
+  .mm-wrap { border: 1px solid var(--hairline); border-radius: var(--radius); background: linear-gradient(180deg,#fff,var(--indigo-50)); padding: .6rem; overflow-x: auto; }
+  .mm-svg { width: 100%; height: auto; display: block; max-width: 60rem; margin: 0 auto; min-width: 34rem; }
+  .mm-link { cursor: pointer; text-decoration: none; }
+  .mm-node rect { transition: opacity .15s ease, filter .15s ease; }
+  .mm-node text { pointer-events: none; }
+  .mm-link:hover .mm-node rect { filter: brightness(1.06); }
+  .mm-edge { transition: opacity .15s ease; }
+
+  .not-this { border: 1px solid var(--hairline); border-left: 4px solid var(--clay); border-radius: var(--radius); background: #fff; padding: 1.1rem 1.3rem; margin-top: 1.2rem; }
+  .not-this h3 { font-size: .95rem; font-weight: 800; margin-bottom: .5rem; }
+  .licence-line { font-size: .78rem; color: var(--muted); line-height: 1.6; margin-top: 1rem; }
+  .licence-line a { color: var(--indigo); }
+</style>
+</head>
+<body>
+<header class="masthead">
+  <div class="wrap">
+    <div class="eyebrow">Learn with Phoebe · Data Engineering</div>
+    <h1>Learn <span class="accent">Geospatial Data</span> with Phoebe</h1>
+    <p class="sub">A location is a claim with a reference system, a boundary choice and a distance formula behind it, and each of the three can be wrong silently. Six sessions on catching them: naming the system a coordinate lives in, deciding inside from outside by counting crossings, measuring a distance three ways and saying its error at your latitude, joining points to polygons without the full loop, reading a disease map against three denominators, and a bench that computes all of it live on real Singapore open data: 332 URA subzones, 613 MRT station exits, the NEA dengue clusters of one day and the Census 2020 population, through a constructed town-council data desk called Rivermont.</p>
+    <div class="stats-row">
+      <div class="stat"><b data-count="6">6</b><span>sessions</span></div>
+      <div class="stat"><b data-count="332">332</b><span>real subzones</span></div>
+      <div class="stat"><b data-count="613">613</b><span>MRT exits on the bench</span></div>
+      <div class="stat"><b data-count="203516">203,516</b><span>pairs computed in your browser</span></div>
+      <div class="stat"><b data-count="45">45</b><span>min per session</span></div>
+    </div>
+  </div>
+</header>
+<main class="wrap">
+  <section class="section">
+    <div class="paths" style="margin-top:0">
+      <h2>The six sessions 📍 <span style="font-size:.85rem;font-weight:600;color:var(--muted)">· from "where is this row" to a bench that can fail</span></h2>
+      <p class="plede">The running case is <strong>Rivermont, a constructed town-council data desk</strong>: Mei runs it, Arif brings the questions, Priya signs off. Rivermont and its people are invented for teaching, and every page says so. Everything the desk works on is real: Singapore open data from data.gov.sg, accessed 2026-10-22 under the Singapore Open Data Licence v1.0, with the licence line on every widget that shows it.</p>
+    </div>
+    <div class="course-grid">
+      <a class="course-card" href="courses/01-where-is-this-row.html" style="--diff:#34D399">
+        <span class="cicon">📍</span>
+        <span class="cnum">Session 1 · foundations</span>
+        <h3>Where is this row?</h3>
+        <p>Two numbers are not a place until the reference system is named. WGS 84 degrees against SVY21 metres, what a degree is worth at 1 deg N, and the axis-order swap that a range check catches at row 1.</p>
+        <span class="meta"><span class="pill amber">▶ Start here</span></span>
+      </a>
+      <a class="course-card" href="courses/02-points-polygons-subzone.html" style="--diff:#FBBF24">
+        <span class="cicon">🔷</span>
+        <span class="cnum">Session 2 · core</span>
+        <h3>Points, polygons and the subzone</h3>
+        <p>332 URA subzones as rings and holes, the even-odd rule by hand and in code, what simplifying a boundary does to a count, and why the boundary you pick is a decision.</p>
+        <span class="meta"><span class="pill">inside or outside</span></span>
+      </a>
+      <a class="course-card" href="courses/03-distance-three-ways.html" style="--diff:#FBBF24">
+        <span class="cicon">📏</span>
+        <span class="cnum">Session 3 · core</span>
+        <h3>Distance three ways</h3>
+        <p>Raw degrees, haversine, projected metres. Why one constant almost works in Singapore and fails by two at 60 deg N, drawn as the cosine it is, and why the sphere is the bigger error near the equator.</p>
+        <span class="meta"><span class="pill">cos(latitude)</span></span>
+      </a>
+      <a class="course-card" href="courses/04-spatial-joins-grid-index.html" style="--diff:#FB923C">
+        <span class="cicon">🔲</span>
+        <span class="cnum">Session 4 · deeper</span>
+        <h3>Spatial joins and the grid index</h3>
+        <p>613 points into 332 polygons without the full loop: bounding boxes first, then a 500 m grid-cell index from scratch. Same answers, 2,396 exact tests instead of 203,516.</p>
+        <span class="meta"><span class="pill">candidate, then exact</span></span>
+      </a>
+      <a class="course-card" href="courses/05-disease-on-the-map.html" style="--diff:#FB923C">
+        <span class="cicon">🗺️</span>
+        <span class="cnum">Session 5 · deeper</span>
+        <h3>Disease on the map</h3>
+        <p>NEA dengue clusters joined to subzones and planning areas, cases against three denominators, the choropleth that lies, and why COVID is not on the page. Geometry and joins, no health advice.</p>
+        <span class="meta"><span class="pill">three denominators</span></span>
+      </a>
+      <a class="course-card" href="courses/06-the-distance-and-join-bench.html" style="--diff:#F87171">
+        <span class="cicon">⚖️</span>
+        <span class="cnum">Session 6 · bench night</span>
+        <h3>The distance-and-join bench</h3>
+        <p>The whole ladder computed live: five rungs, 203,516 pairs, point in polygon three ways, an anti-lever that moves the points to 60 deg N and a break button that swaps the columns.</p>
+        <span class="meta"><span class="pill amber">★ the bench</span></span>
+      </a>
+    </div>
+    <div class="diff-legend">
+      <span><i style="background:#34D399"></i>foundations</span>
+      <span><i style="background:#FBBF24"></i>core</span>
+      <span><i style="background:#FB923C"></i>deeper</span>
+      <span><i style="background:#F87171"></i>bench night</span>
+    </div>
+  </section>
+  <section class="section">
+    <div class="paths" style="margin-top:0">
+      <h2>Your passport 🎫</h2>
+      <p class="plede">Clear all three quiz questions in a session and it gets stamped. Six stamps means you can name a coordinate's system, decide inside from outside, choose a distance formula and state its error at your latitude, join points to polygons with an index, read a disease map against three denominators, and prove it all on a bench that can report a worse number. Stamps live in this browser only.</p>
+    </div>
+    <div class="pp-strip"></div>
+  </section>
+  <section class="section">
+    <div class="not-this">
+      <h3>What this is not, so you land in the right place 🧭</h3>
+      <table class="clean">
+        <tr><th>If your question is</th><th>Go here instead</th></tr>
+        <tr><td>Where should a city place its sensors, how deep does the zoning problem go, how is open data published and trips kept private?</td><td><a href="https://phoebefu6.github.io/learn-smart-city-with-phoebe/courses/p2-zones-joins-and-the-map.html">Smart City, Zones, joins and the map ↗</a></td></tr>
+        <tr><td>Which chart form and which colour ramp should a map use?</td><td><a href="https://phoebefu6.github.io/learn-dataviz-with-phoebe/courses/04-colour-that-works.html">Dataviz, Colour that works ↗</a></td></tr>
+        <tr><td>How do I handle a sensor time series, clocks and resampling?</td><td><a href="https://phoebefu6.github.io/learn-iot-data-with-phoebe/courses/p2-clocks-sampling-and-resampling.html">IoT Data, Clocks, sampling and resampling ↗</a></td></tr>
+        <tr><td>What does the law say about location data about people?</td><td><a href="https://phoebefu6.github.io/learn-pdpa-dnc-with-phoebe/">PDPA ↗</a> &nbsp;·&nbsp; <a href="https://phoebefu6.github.io/learn-gdpr-with-phoebe/">GDPR ↗</a></td></tr>
+        <tr><td>How do joins work in SQL or pandas in general?</td><td><a href="https://phoebefu6.github.io/learn-sql-with-phoebe/courses/b4-joining-tables.html">SQL, Joining tables ↗</a> &nbsp;·&nbsp; <a href="https://phoebefu6.github.io/learn-python-data-analysis-with-phoebe/courses/03-pandas-core.html">Python, pandas core ↗</a></td></tr>
+        <tr><td><strong>I have a table with a latitude column and I need to know what it means, which zone each row is in, and how far it is from something.</strong></td><td><strong>you are in the right place</strong></td></tr>
+      </table>
+      <p style="margin-top:.7rem;font-size:.86rem;color:var(--muted)"><strong>The spatial part only.</strong> Coordinate systems, polygons, distance and the join. Chart craft, time series, the law and the general languages are taught next door and linked from here rather than repeated.</p>
+    </div>
+  </section>
+  <section class="section">
+    <div class="paths">
+      <h2>Choose your path 🗺️</h2>
+      <p class="plede">Three doors into the same conviction: say the system, say the boundary, say the formula, then check the one point whose answer you already know.</p>
+      <div class="path"><b>📋 I have a spreadsheet with Lat and Long</b>
+        <a class="pstep" href="courses/01-where-is-this-row.html">1</a><span class="parr">→</span>
+        <a class="pstep" href="courses/02-points-polygons-subzone.html">2</a><span class="parr">→</span>
+        <a class="pstep" href="courses/06-the-distance-and-join-bench.html">6</a>
+        <span style="font-size:.82rem;color:var(--muted)">name the system, find the zone, see the shortcuts measured</span>
+      </div>
+      <div class="path"><b>⚡ My spatial join is too slow</b>
+        <a class="pstep" href="courses/03-distance-three-ways.html">3</a><span class="parr">→</span>
+        <a class="pstep" href="courses/04-spatial-joins-grid-index.html">4</a><span class="parr">→</span>
+        <a class="pstep" href="courses/06-the-distance-and-join-bench.html">6</a>
+        <span style="font-size:.82rem;color:var(--muted)">pick the formula, build the index, prove the same answers</span>
+      </div>
+      <div class="path"><b>🧭 The whole craft</b>
+        <a class="pstep" href="courses/01-where-is-this-row.html">1</a><span class="parr">→</span>
+        <a class="pstep" href="courses/02-points-polygons-subzone.html">2</a><span class="parr">→</span>
+        <a class="pstep" href="courses/03-distance-three-ways.html">3</a><span class="parr">→</span>
+        <a class="pstep" href="courses/04-spatial-joins-grid-index.html">4</a><span class="parr">→</span>
+        <a class="pstep" href="courses/05-disease-on-the-map.html">5</a><span class="parr">→</span>
+        <a class="pstep" href="courses/06-the-distance-and-join-bench.html">6</a>
+        <span style="font-size:.82rem;color:var(--muted)">from the first row to the bench</span>
+      </div>
+    </div>
+  </section>
+  <section class="section">
+    <div class="paths" style="margin-top:0">
+      <h2>What is honest here 🧾</h2>
+      <p class="plede">Maps carry authority they have not always earned. Each claim on these pages carries its status.</p>
+    </div>
+    <table class="clean">
+      <tr><th>Claim</th><th>Status</th></tr>
+      <tr><td>Every number on the bench: nearest exits, catchments, errors, evaluation counts, the join</td><td><strong>Really computed</strong> in your browser from simplified, quantised geometry of four data.gov.sg datasets (Singapore Open Data Licence v1.0); the simplification tolerance is printed on the widget; an independent Python run agrees on all 142 values</td></tr>
+      <tr><td>SVY21 / EPSG:3414 and its parameters</td><td><strong>Read in the EPSG registry</strong>; the conversion is proven on the projection's own origin and against an independent series</td></tr>
+      <tr><td>What an NEA dengue cluster is, and the alert levels</td><td><strong>Read on NEA's page</strong> and quoted; no health advice anywhere, dengue is a geometry-and-join exercise and session 5 says so</td></tr>
+      <tr><td>Why COVID is not on the map</td><td><strong>Reported:</strong> the open COVID datasets carry no location field; session 5 states it and the sources</td></tr>
+      <tr><td>The 60 deg N position on the bench</td><td><strong>Constructed:</strong> the same points translated north to show one cosine at work; said on the widget</td></tr>
+      <tr><td>Rivermont, Mei, Arif, Priya and every Rivermont detail</td><td><strong>Constructed,</strong> for teaching</td></tr>
+    </table>
+    <p class="licence-line">Contains information from Master Plan 2019 Subzone Boundary (No Sea) (GEOJSON), LTA MRT Station Exit (GEOJSON), Dengue Clusters (GEOJSON) and Resident Population by Planning Area/Subzone of Residence, Age Group and Sex (Census of Population 2020), accessed on 2026-10-22 from data.gov.sg, which are made available under the terms of the Singapore Open Data Licence version 1.0 <a href="https://data.gov.sg/open-data-licence">https://data.gov.sg/open-data-licence</a>.</p>
+  </section>
+  <section class="section mm-section">
+    <h2>The knowledge map 🧠</h2>
+    <p class="mm-lede">The whole path at a glance - hover a session to spotlight its concepts, click any node to jump in.</p>
+    <div class="mm-wrap"><div id="mindmap"></div></div>
+  </section>
+  <footer class="pagefoot">
+    <span>learn-geospatial-with-phoebe · by Phoebe Fu &nbsp;·&nbsp; 📚 <a href="https://phoebefu6.github.io/learn-with-phoebe/">Learn with Phoebe ↗</a></span>
+    <span>Neighbours on the shelf: <a href="https://phoebefu6.github.io/learn-smart-city-with-phoebe/">Smart City ↗</a> &nbsp;·&nbsp; <a href="https://phoebefu6.github.io/learn-dataviz-with-phoebe/">Dataviz ↗</a> &nbsp;·&nbsp; <a href="https://phoebefu6.github.io/learn-data-engineering-with-phoebe/">Data Engineering ↗</a></span>
+  </footer>
+</main>
+<script>
+window.MINDMAP_DATA = {
+ "title": "Geo-\nspatial",
+ "centerColor": "#8E0C22",
+ "sessions": [
+  {
+   "label": "Where is\nthis row?",
+   "href": "courses/01-where-is-this-row.html",
+   "color": "#34D399",
+   "concepts": [
+    {
+     "label": "A coordinate is a claim",
+     "href": "courses/01-where-is-this-row.html"
+    },
+    {
+     "label": "WGS 84 vs SVY21 metres",
+     "href": "courses/01-where-is-this-row.html"
+    },
+    {
+     "label": "The range check gate",
+     "href": "courses/01-where-is-this-row.html"
+    }
+   ]
+  },
+  {
+   "label": "Points, polygons\nand the subzone",
+   "href": "courses/02-points-polygons-subzone.html",
+   "color": "#FBBF24",
+   "concepts": [
+    {
+     "label": "Rings, holes, 332 subzones",
+     "href": "courses/02-points-polygons-subzone.html"
+    },
+    {
+     "label": "Even-odd rule by hand",
+     "href": "courses/02-points-polygons-subzone.html"
+    },
+    {
+     "label": "Boundary is a choice",
+     "href": "courses/02-points-polygons-subzone.html"
+    }
+   ]
+  },
+  {
+   "label": "Distance\nthree ways",
+   "href": "courses/03-distance-three-ways.html",
+   "color": "#FBBF24",
+   "concepts": [
+    {
+     "label": "Raw, haversine, projected",
+     "href": "courses/03-distance-three-ways.html"
+    },
+    {
+     "label": "cos(latitude) drawn",
+     "href": "courses/03-distance-three-ways.html"
+    },
+    {
+     "label": "1 deg N against 60 deg N",
+     "href": "courses/03-distance-three-ways.html"
+    }
+   ]
+  },
+  {
+   "label": "Spatial joins and\nthe grid index",
+   "href": "courses/04-spatial-joins-grid-index.html",
+   "color": "#FB923C",
+   "concepts": [
+    {
+     "label": "203,516 pairs, the loop",
+     "href": "courses/04-spatial-joins-grid-index.html"
+    },
+    {
+     "label": "Bounding box first",
+     "href": "courses/04-spatial-joins-grid-index.html"
+    },
+    {
+     "label": "500 m grid from scratch",
+     "href": "courses/04-spatial-joins-grid-index.html"
+    }
+   ]
+  },
+  {
+   "label": "Disease on\nthe map",
+   "href": "courses/05-disease-on-the-map.html",
+   "color": "#FB923C",
+   "concepts": [
+    {
+     "label": "What a cluster is",
+     "href": "courses/05-disease-on-the-map.html"
+    },
+    {
+     "label": "Three denominators",
+     "href": "courses/05-disease-on-the-map.html"
+    },
+    {
+     "label": "Why COVID is not here",
+     "href": "courses/05-disease-on-the-map.html"
+    }
+   ]
+  },
+  {
+   "label": "The distance-\nand-join bench",
+   "href": "courses/06-the-distance-and-join-bench.html",
+   "color": "#F87171",
+   "concepts": [
+    {
+     "label": "Five rungs, two numbers",
+     "href": "courses/06-the-distance-and-join-bench.html"
+    },
+    {
+     "label": "Anti-lever: 60 deg N",
+     "href": "courses/06-the-distance-and-join-bench.html"
+    },
+    {
+     "label": "Break: swap the columns",
+     "href": "courses/06-the-distance-and-join-bench.html"
+    }
+   ]
+  }
+ ]
+};
+</script>
+<script src="assets/mindmap.js?v=1"></script>
+<script src="assets/app.js?v=1"></script>
+</body>
+</html>

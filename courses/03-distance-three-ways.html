@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- social:start -->
+<meta name="description" content="Session 3 of 6. The same two points, three distances: raw degrees times one constant, haversine on a sphere, SVY21 projected metres. Why the flat shortcut is 3.79 m off on average at 1 deg N and 276 m off at 60 deg N, drawn as cos(latitude); why haversine is barely better here; nearest MRT exit for 332 subzone centroids on real Singapore open data.">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Learn with Phoebe">
+<meta property="og:title" content="Distance three ways - learn geospatial data with phoebe">
+<meta property="og:description" content="Session 3 of 6. Raw degrees, haversine, projected metres. One cosine decides which shortcut survives, and near the equator it is the sphere, not the latitude, that costs you metres.">
+<meta property="og:url" content="https://phoebefu6.github.io/learn-geospatial-with-phoebe/courses/03-distance-three-ways.html">
+<meta property="og:image" content="https://phoebefu6.github.io/learn-geospatial-with-phoebe/assets/og-cover.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Distance three ways - learn geospatial data with phoebe">
+<meta name="twitter:description" content="Session 3 of 6. Three distance formulas, one cosine, and the nearest MRT exit for 332 subzones.">
+<meta name="twitter:image" content="https://phoebefu6.github.io/learn-geospatial-with-phoebe/assets/og-cover.png">
+<!-- social:end -->
+<title>Session 3 · Distance three ways - learn geospatial data with phoebe</title>
+<link rel="stylesheet" href="../assets/style.css?v=1">
+</head>
+<body>
+
+<div class="toolbar">
+  <div class="wrap">
+    <span class="crumb"><a href="../index.html">learn-geospatial-with-phoebe</a> / Session 3 of 6</span>
+    <button class="btn" id="toggle-all" type="button">Expand all</button>
+    <button class="btn primary" id="zoom-toggle" type="button">Projector zoom: off</button>
+  </div>
+</div>
+
+<header class="masthead">
+  <div class="wrap">
+    <div class="eyebrow">Learn Geospatial Data with Phoebe · Session 3 of 6</div>
+    <h1>Distance <span class="accent">three</span> ways</h1>
+    <p class="sub">Arif's question from session 1 is finally answerable: how far is each estate from its nearest MRT exit? The honest answer is "it depends which distance", and tonight there are three. Multiply degree differences by one constant and take Pythagoras. Treat the Earth as a sphere and take the great circle. Move both points into SVY21 metres and take Pythagoras there. On 332 subzone centroids against 613 exits the three answers differ by metres, not kilometres, and the order of the errors is not the one most people expect. Then we move the same points to 60 deg N and watch the cheapest method fall apart, for a reason that fits on one line: the width of a degree of longitude is 111.32 km times the cosine of the latitude.</p>
+    <div class="chip-row">
+      <span class="chip level">🟡 Core</span>
+      <span class="chip audience">Anyone who has typed a distance formula into a spreadsheet</span>
+      <span class="chip audience">Python standard library and math only</span>
+      <span class="chip time">45 min</span>
+    </div>
+    <div class="agenda">
+      <span class="a1" style="flex:1">0-3 · Welcome</span>
+      <span class="a2" style="flex:4">3-18 · One cosine, three formulas, one latitude</span>
+      <span class="a3" style="flex:5">18-40 · Build-along: three functions, one loop</span>
+      <span class="a4" style="flex:1">40-45 · Q&amp;A</span>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <section class="section" id="intro">
+    <div class="section-kicker">
+      <span class="klabel">Part 0</span>
+      <h2>Where we start</h2>
+    </div>
+    <p class="lede">Rivermont is a constructed town-council data desk: Mei runs it, Arif is the estates officer with the questions, Priya is the general manager who signs off. No number about Rivermont is a measurement. The data is real Singapore open data from data.gov.sg (URA subzones, LTA MRT exits, NEA dengue clusters, SingStat Census 2020), accessed 2026-10-22 under the Singapore Open Data Licence v1.0; Rivermont is constructed. After session 2 Mei has a point for every one of the 332 subzones, its area-weighted centroid in degrees, and the 613 exits as points in the same degrees. Arif wants one column: metres to the nearest exit. Tonight Mei computes that column three times with three formulas and compares them, because the desk's rule is that a number you can compute two ways and cannot reconcile is a number you do not yet understand.</p>
+
+    <div class="legend">
+      <span class="pill">🎫 Clear all three quiz questions to stamp your passport</span>
+      <span class="pill">Live = presented in the 45 minutes</span>
+      <span class="pill">Self-study = the full depth, after class</span>
+      <span class="pill">★ Build-along = run it yourself</span>
+    </div>
+
+    <div class="callout win">
+      <p><strong>★ What you walk out with tonight.</strong> Three working distance functions in plain Python and a clear sentence about what each one assumes (a flat grid, a sphere, an ellipsoid projected to a plane). The one cosine that explains why the flat shortcut is almost right in Singapore and badly wrong in Helsinki. The counter-intuitive fact that near the equator the sphere, not the latitude, is the bigger error. And a nearest-exit table for all 332 subzones that you have checked against a reference instead of trusting.</p>
+    </div>
+  </section>
+
+  <section class="section" id="part-1">
+    <div class="section-kicker">
+      <span class="klabel">Part 1 · covers one degree is not one length</span>
+      <h2>The cosine that sets the price of a shortcut</h2>
+      <span class="tag concept">5 min live</span>
+    </div>
+    <p class="lede">Session 1 planted the fact; tonight it does the work. At the equator one degree of longitude is 111.32 km, the circumference of the WGS 84 ellipsoid divided by 360. Meridians are not parallel lines, they meet at the pole, so the distance between two of them shrinks as you go north, and the shrink is exactly cos(latitude). One degree of latitude is a different length again, about 110.57 km near the equator, because the Earth is flattened and a meridian arc there is shorter than a parallel. Any formula that multiplies degrees by one constant has quietly assumed cos(latitude) is 1 and the two degrees are equal. Both assumptions are almost true at Rivermont's constructed desk in Singapore, and that "almost" is the subject of the session.</p>
+
+    <figure class="zoomable">
+      <svg viewBox="0 0 880 346" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="A wedge of the globe: two meridians rise from the equator at the bottom and meet at the pole at the top. Three parallels cross the wedge: the equator, where one degree of longitude is 111.32 km; 1 degree 22 minutes north, almost the same width at 111.29 km, drawn as a thick red segment just above the equator; and 60 degrees north, where the wedge is half as wide and a degree is 55.66 km. Along the left side a note says one degree of latitude is 110.57 km near the equator, a meridian arc. The formula width equals 111.32 km times cos of latitude sits at top right. The bottom note says the flat constant multiplies both axes by 111,320 m.">
+        <defs>
+          <filter id="f3aSk" x="-3%" y="-3%" width="106%" height="106%"><feTurbulence type="fractalNoise" baseFrequency="0.02" numOctaves="2" seed="53" result="n"/><feDisplacementMap in="SourceGraphic" in2="n" scale="2.4" xChannelSelector="R" yChannelSelector="G"/></filter>
+          <pattern id="f3aHc" patternUnits="userSpaceOnUse" width="7" height="7" patternTransform="rotate(-38)"><line x1="0" y1="0" x2="0" y2="7" stroke="#C8102E" stroke-width="1" opacity=".5"/></pattern>
+        </defs>
+        <style>
+          .f3aH { font: 800 12px Inter, sans-serif; fill: #1C1214; }
+          .f3aL { font: 600 12px Inter, sans-serif; fill: #1C1214; }
+          .f3aS { font: 400 11px Inter, sans-serif; fill: #5F4D50; }
+          .f3aB { font: 800 11px Inter, sans-serif; fill: #8E0C22; }
+          .f3aV { font: 800 13px Inter, sans-serif; fill: #8E0C22; }
+          .f3aA { font: 700 11px Inter, sans-serif; fill: #C8102E; }
+          .f3aN { font: 400 12px Inter, sans-serif; fill: #5F4D50; }
+        </style>
+
+        <text class="f3aH" x="30" y="26">TWO MERIDIANS MEET AT THE POLE, SO A DEGREE OF LONGITUDE SHRINKS BY cos(LATITUDE)</text>
+
+        <g filter="url(#f3aSk)" fill="none" stroke="#1C1214" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M260 280 L440 60 L620 280" />
+          <path d="M260 280 L620 280" stroke-width="2.6"/>
+          <path d="M270 268 L610 268" stroke="#C8102E" stroke-width="3"/>
+          <path d="M350 170 L530 170" stroke="#C8102E" stroke-width="2.4"/>
+          <rect x="350" y="170" width="180" height="98" fill="url(#f3aHc)" stroke="none"/>
+          <path d="M260 280 L260 300 M620 280 L620 300" stroke="#5F4D50" stroke-width="1.2"/>
+          <path d="M350 170 L350 152 M530 170 L530 152" stroke="#5F4D50" stroke-width="1.2"/>
+          <circle cx="440" cy="60" r="5" fill="#FFFFFF"/>
+        </g>
+
+        <text class="f3aA" x="440" y="48" text-anchor="middle">pole</text>
+        <text class="f3aB" x="636" y="110">width = 111.32 km x cos(latitude)</text>
+        <text class="f3aS" x="636" y="126">the term that moves with latitude</text>
+        <text class="f3aL" x="636" y="164">60 deg N · cos = 0.5</text>
+        <text class="f3aV" x="636" y="180">55.66 km per deg of longitude</text>
+        <text class="f3aL" x="636" y="256">1 deg 22' N · cos = 0.99972</text>
+        <text class="f3aV" x="636" y="272">111.29 km per deg of longitude</text>
+        <text class="f3aL" x="636" y="290">equator · cos = 1</text>
+        <text class="f3aV" x="636" y="306">111.32 km per deg of longitude</text>
+        <text class="f3aL" x="40" y="186">one degree of latitude</text>
+        <text class="f3aV" x="40" y="202">110.57 km near the equator</text>
+        <text class="f3aS" x="40" y="218">a meridian arc on the flattened Earth</text>
+        <text class="f3aS" x="40" y="234">shorter than 111.32 at any latitude</text>
+
+        <text class="f3aN" x="30" y="334">The flat constant 111,320 m assumes cos = 1 on the east-west axis and 111.32 = 110.57 on the north-south one.</text>
+      </svg>
+      <figcaption>🔍 Click to zoom - the hatched band is where one constant starts to lie; the thick red parallel just above the equator is Singapore, almost outside it</figcaption>
+    </figure>
+
+    <details class="card" open>
+      <summary><span class="mode live">Live</span>Two reasons the shortcut almost works at 1 deg N<span class="mini">3 min</span><span class="caret">▶</span></summary>
+      <div class="body">
+        <p>Take the flat shortcut apart. It says east-west metres = degrees of longitude x 111,320 and north-south metres = degrees of latitude x 111,320. The first line is off by the cosine: at 1 deg 22' N the cosine is 0.99972, so a degree of longitude is 111.29 km and the constant is 30 m long per degree, 0.03%. The second line is off by the flattening: a degree of latitude near the equator is 110.57 km, so the constant is 750 m long per degree, 0.7%. Across a nearest-exit distance of a few hundred metres both errors are centimetres to metres. That is why the shortcut survives in so many spreadsheets, and why Mei does not throw it out: she measures it.</p>
+        <p>Measured on the real data, nearest exit per subzone centroid by raw degrees is 3.79 m too long on average against SVY21 metres, 57.03 m too long at worst, and 5 of the 332 subzones get a different nearest exit. Not nothing, not a disaster. The point of tonight is to know which of those two numbers applies to the question Arif asked.</p>
+      </div>
+    </details>
+
+    <details class="card">
+      <summary><span class="mode self">Self-study</span>Why the error is positive, and why it grows with the bearing<span class="mini">3 min</span><span class="caret">▶</span></summary>
+      <div class="body">
+        <p>Both of the shortcut's constants are too large for Singapore, so every raw-degree distance is a little longer than the projected one: the mean error is +3.79 m, a bias, not noise. How much longer depends on direction. A pair of points due east-west is stretched by 0.03%; a pair due north-south by 0.7%. The worst case of 57.03 m is a centroid whose nearest exit sits a long way off and mostly north or south of it. If you ever see a flat-degree distance that is shorter than the projected one in Singapore, something else is wrong: a swapped axis, a different file, a typo in the constant.</p>
+        <p>This is also why "mean error" and "worst error" are both on the table. The mean tells you the bias of the method; the worst tells you whether a decision can flip. Arif's question is a ranking (which exit is nearest), and rankings flip on the worst case, not the mean.</p>
+      </div>
+    </details>
+
+    <div class="callout example">
+      <span class="ex-pill">Real world</span>
+      <p><strong>The constant that moved cities.</strong> A familiar pattern at any desk that inherits code: a distance function with 111,320 hard-coded, written for one city, reused for a dataset about another at a very different latitude. Nothing errors. Every east-west distance comes out too long by exactly 1 / cos(latitude), and the "nearest" anything is quietly wrong for a share of the rows. The fix is not a better constant. It is a formula that carries the latitude, or a projection chosen for the place.</p>
+    </div>
+  </section>
+
+  <section class="section" id="part-2">
+    <div class="section-kicker">
+      <span class="klabel">Part 2 · covers the three formulas and what each assumes</span>
+      <h2>Flat, round, or flattened and projected</h2>
+      <span class="tag concept">6 min live</span>
+    </div>
+    <p class="lede">Each distance formula is a statement about the shape of the Earth. Raw degrees say it is a flat grid with one scale. Haversine says it is a sphere of one radius, 6,371,008.8 m, with the cosine handled inside the formula. SVY21 says it is the WGS 84 ellipsoid, flattened by 1/298.26, unrolled onto a plane by the transverse Mercator projection whose parameters session 1 typed in. At Rivermont's constructed desk Mei runs all three on the real centroids and exits and lines them up against the third, which is the reference because it is the formula Singapore's own survey uses, with the control point from session 1 behind it.</p>
+
+    <figure class="zoomable">
+      <svg viewBox="0 0 880 330" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Three panels side by side. Left, raw degrees: a flat square grid with two dots and a straight line, assumes a flat grid with one scale; mean error plus 3.79 metres, worst 57.03 metres, 5 of 332 nearest exits change. Middle, haversine: an arc on a circle with two dots, assumes a sphere of radius 6,371,008.8 metres; mean error plus 2.57 metres, worst 42.95 metres, 5 of 332 change. Right, projected SVY21: a flattened ellipse with a small grid, assumes the WGS 84 ellipsoid projected by transverse Mercator; the reference, error zero. A red pill under the middle panel says raw and haversine are only 1.22 metres apart on average. The note says near the equator the sphere is the bigger error and the cosine the smaller one.">
+        <defs>
+          <filter id="f3bSk" x="-3%" y="-3%" width="106%" height="106%"><feTurbulence type="fractalNoise" baseFrequency="0.02" numOctaves="2" seed="59" result="n"/><feDisplacementMap in="SourceGraphic" in2="n" scale="2.4" xChannelSelector="R" yChannelSelector="G"/></filter>
+        </defs>
+        <style>
+          .f3bH { font: 800 12px Inter, sans-serif; fill: #1C1214; }
+          .f3bL { font: 600 12px Inter, sans-serif; fill: #1C1214; }
+          .f3bS { font: 400 11px Inter, sans-serif; fill: #5F4D50; }
+          .f3bB { font: 800 11px Inter, sans-serif; fill: #8E0C22; }
+          .f3bV { font: 800 13px Inter, sans-serif; fill: #8E0C22; }
+          .f3bA { font: 700 11px Inter, sans-serif; fill: #C8102E; }
+          .f3bN { font: 400 12px Inter, sans-serif; fill: #5F4D50; }
+        </style>
+
+        <text class="f3bH" x="30" y="26">THREE FORMULAS, THREE SHAPES OF THE EARTH, ONE REFERENCE</text>
+
+        <g filter="url(#f3bSk)" fill="none" stroke="#1C1214" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="40" y="50" width="260" height="200" rx="10" transform="rotate(-0.5 170 150)" fill="#FFFFFF"/>
+          <rect x="310" y="50" width="260" height="200" rx="10" transform="rotate(0.4 440 150)" fill="#FFFFFF"/>
+          <rect x="580" y="50" width="260" height="200" rx="10" transform="rotate(-0.4 710 150)" fill="#FDF0F1"/>
+          <path d="M70 90 L270 90 M70 130 L270 130 M70 170 L270 170 M110 84 L110 176 M150 84 L150 176 M190 84 L190 176 M230 84 L230 176" stroke="#5F4D50" stroke-width="1.2"/>
+          <path d="M120 160 L240 100" stroke="#C8102E" stroke-width="2.4"/>
+          <circle cx="120" cy="160" r="5" fill="#EF3340"/>
+          <circle cx="240" cy="100" r="5" fill="#EF3340"/>
+          <path d="M350 176 A 90 90 0 0 1 530 176" stroke="#5F4D50" stroke-width="1.2"/>
+          <path d="M376 134 A 90 90 0 0 1 504 134" stroke="#C8102E" stroke-width="2.4"/>
+          <circle cx="376" cy="134" r="5" fill="#EF3340"/>
+          <circle cx="504" cy="134" r="5" fill="#EF3340"/>
+          <ellipse cx="710" cy="130" rx="104" ry="44" stroke="#5F4D50" stroke-width="1.2"/>
+          <path d="M650 112 L770 112 M650 130 L770 130 M650 148 L770 148 M680 100 L680 160 M710 98 L710 162 M740 100 L740 160" stroke="#5F4D50" stroke-width="1.2"/>
+          <path d="M668 152 L752 108" stroke="#C8102E" stroke-width="2.4"/>
+          <circle cx="668" cy="152" r="5" fill="#EF3340"/>
+          <circle cx="752" cy="108" r="5" fill="#EF3340"/>
+          <rect x="344" y="262" width="192" height="24" rx="12" transform="rotate(-1 440 274)" fill="#EF3340" stroke="#1C1214"/>
+        </g>
+
+        <text class="f3bA" x="56" y="72">1 · RAW DEGREES x 111,320</text>
+        <text class="f3bS" x="56" y="196">assumes: a flat grid, one scale</text>
+        <text class="f3bL" x="56" y="214">mean error +3.79 m · worst 57.03 m</text>
+        <text class="f3bS" x="56" y="232">5 of 332 nearest exits change</text>
+
+        <text class="f3bA" x="326" y="72">2 · HAVERSINE, SPHERE R 6,371,008.8 m</text>
+        <text class="f3bS" x="326" y="196">assumes: a sphere, one radius</text>
+        <text class="f3bL" x="326" y="214">mean error +2.57 m · worst 42.95 m</text>
+        <text class="f3bS" x="326" y="232">5 of 332 nearest exits change</text>
+
+        <text class="f3bA" x="596" y="72">3 · SVY21 PROJECTED METRES</text>
+        <text class="f3bS" x="596" y="196">assumes: WGS 84 ellipsoid, projected</text>
+        <text class="f3bL" x="596" y="214">the reference · error 0 by definition</text>
+        <text class="f3bS" x="596" y="232">median nearest exit 610.38 m</text>
+
+        <text class="f3bL" x="440" y="278" text-anchor="middle">1 and 2 are only 1.22 m apart on average</text>
+
+        <text class="f3bN" x="30" y="316">Near the equator the sphere is the bigger error and cos(latitude) the smaller one. At 60 deg N the order flips.</text>
+      </svg>
+      <figcaption>🔍 Click to zoom - haversine fixes the cosine and keeps the sphere; in Singapore the cosine was never the problem, so it buys 1.22 m</figcaption>
+    </figure>
+    <p class="mono">Contains information from Master Plan 2019 Subzone Boundary (No Sea) (GEOJSON) and LTA MRT Station Exit (GEOJSON) accessed on 2026-10-22 from data.gov.sg which is made available under the terms of the Singapore Open Data Licence version 1.0 https://data.gov.sg/open-data-licence</p>
+
+    <details class="card">
+      <summary><span class="mode live">Live</span>Haversine: the cosine handled, the sphere kept<span class="mini">3 min</span><span class="caret">▶</span></summary>
+      <div class="body">
+        <p>The haversine formula is the standard "proper" distance between two latitude-longitude pairs: a = sin^2(dphi/2) + cos(phi1) cos(phi2) sin^2(dlambda/2), then d = 2 R atan2(sqrt a, sqrt(1 - a)), with R = 6,371,008.8 m, the mean radius of the Earth (reported). The cos(phi1) cos(phi2) term is the cosine from Part 1, built in, so haversine is right about the width of a degree of longitude at every latitude. It is usually credited to Sinnott (1984, reported). It is also wrong about something, by construction: one radius cannot make a degree of latitude 110.57 km and a degree of longitude at the equator 111.32 km at the same time. A sphere has no flattening.</p>
+        <p>On the real data that shows up as a mean error of +2.57 m against SVY21 metres (mean absolute 2.86 m), worst 42.95 m, and the same 5 of 332 nearest exits changing as raw degrees. Against raw degrees directly, haversine differs by 1.22 m on average and 14.08 m at worst, and not one nearest exit changes between them. In Singapore, haversine's whole improvement over the shortcut is the cosine, and the cosine here is 0.99972.</p>
+      </div>
+    </details>
+
+    <details class="card">
+      <summary><span class="mode self">Self-study</span>Projected metres as the reference, and the ellipsoidal answer that is not implemented<span class="mini">4 min</span><span class="caret">▶</span></summary>
+      <div class="body">
+        <p>Rung 3 is two steps: run both points through svy21() from session 1, then Pythagoras on the eastings and northings. It is the reference not because projection is perfect, every map projection distorts something, but because SVY21 was designed for exactly this patch of ground: a transverse Mercator with its central meridian at 103 deg 50' E and scale factor 1, so the distortion across Singapore's roughly 50 km is far below the metre-scale differences being measured, and the origin control point (28,001.642, 38,744.572) proves the arithmetic. The median nearest exit under it is 610.38 m and the mean 975.88 m, for 203,516 distance evaluations (332 x 613).</p>
+        <p>There is a fourth formula the session describes and does not implement. Vincenty (1975, reported) solves the inverse problem on the ellipsoid itself: the shortest path between two points on WGS 84, iteratively, with sub-millimetre accuracy claimed (reported). It is the right tool when there is no local projection to reach for, say two points on different continents, and the wrong amount of machinery for 613 exits inside one projection's area of use. Say "the ellipsoidal great-circle answer exists and is iterative", then use the projection you have. One seam: taking a subzone's centroid as "the subzone's point" is itself a boundary choice, and the depth of that argument (the modifiable areal unit problem, Openshaw 1984, reported) lives next door in <a href="https://phoebefu6.github.io/learn-smart-city-with-phoebe/courses/p2-zones-joins-and-the-map.html">Smart City's zones and joins session</a>.</p>
+      </div>
+    </details>
+
+    <div class="callout tip">
+      <p><strong>Name the shape when you name the formula.</strong> "I used haversine" is a statement that the Earth is a sphere. "I used raw degrees" is a statement that it is flat. Neither is wrong as an engineering choice; both are wrong as an unstated assumption. Mei's notes carry three lines, one per function, each ending with the shape it assumes and the error it was measured to have.</p>
+    </div>
+
+    <div class="callout example">
+      <span class="ex-pill">Real world</span>
+      <p><strong>Priya's question (constructed).</strong> Priya looks at the three-column table and asks which one is right. Mei's answer is the sentence the session is for: the third column is the reference, the first two are each a few metres long on average and up to 57 m long at worst, and for the question Arif asked, "which exit is nearest", 327 of 332 subzones get the same answer under all three. The 5 that differ are the ones she will check by hand before the table goes out.</p>
+    </div>
+  </section>
+
+  <section class="section" id="part-3">
+    <div class="section-kicker">
+      <span class="klabel">Part 3 · covers the same points at 60 deg N</span>
+      <h2>Move the island north and watch the shortcut break</h2>
+      <span class="tag concept">4 min live</span>
+    </div>
+    <p class="lede">The shortcut's error is small in Singapore because cos(1 deg 22') is 0.99972. To see what it costs elsewhere, Mei at Rivermont's constructed desk does something no real dataset would: she adds 58.6333 deg to every latitude, centroids and exits alike, so the SVY21 origin sits on 60 deg N, where the cosine is 0.5. The points keep their shape in degrees. The formulas do not change. Only the latitude does. Projected metres cannot follow, SVY21 is defined for Singapore only, so the comparison at 60 deg N is raw degrees against haversine, the sphere that at least knows about the cosine.</p>
+
+    <figure class="zoomable">
+      <svg viewBox="0 0 880 352" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Two panels. Left, at 1 degree 22 minutes north: two nearly parallel meridians with the cloud of 332 centroids drawn as a hatched block at full width; raw degrees against haversine differ by 1.22 metres on average, 14.08 metres at worst, and zero nearest exits change. Right, at 60 degrees north, a constructed position: the two meridians visibly converge and the same cloud of points is half as wide on the ground; mean error 276.03 metres, worst 2,384.4 metres, 124 of 332 nearest exits change. Below, two bars for the mean error on one scale: a sliver for Singapore and a long red bar for 60 degrees north. The note says the points, the formulas and the code are identical; the latitude changed.">
+        <defs>
+          <filter id="f3cSk" x="-3%" y="-3%" width="106%" height="106%"><feTurbulence type="fractalNoise" baseFrequency="0.02" numOctaves="2" seed="67" result="n"/><feDisplacementMap in="SourceGraphic" in2="n" scale="2.4" xChannelSelector="R" yChannelSelector="G"/></filter>
+          <pattern id="f3cHc" patternUnits="userSpaceOnUse" width="7" height="7" patternTransform="rotate(-38)"><line x1="0" y1="0" x2="0" y2="7" stroke="#C8102E" stroke-width="1" opacity=".5"/></pattern>
+        </defs>
+        <style>
+          .f3cH { font: 800 12px Inter, sans-serif; fill: #1C1214; }
+          .f3cL { font: 600 12px Inter, sans-serif; fill: #1C1214; }
+          .f3cS { font: 400 11px Inter, sans-serif; fill: #5F4D50; }
+          .f3cB { font: 800 11px Inter, sans-serif; fill: #8E0C22; }
+          .f3cV { font: 800 13px Inter, sans-serif; fill: #8E0C22; }
+          .f3cA { font: 700 11px Inter, sans-serif; fill: #C8102E; }
+          .f3cN { font: 400 12px Inter, sans-serif; fill: #5F4D50; }
+        </style>
+
+        <text class="f3cH" x="30" y="26">THE SAME 332 CENTROIDS AND 613 EXITS, AT 1 DEG 22' N AND SHIFTED TO 60 DEG N</text>
+
+        <g filter="url(#f3cSk)" fill="none" stroke="#1C1214" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="40" y="46" width="390" height="178" rx="10" transform="rotate(0.4 235 135)" fill="#FFFFFF"/>
+          <rect x="450" y="46" width="390" height="178" rx="10" transform="rotate(-0.4 645 135)" fill="#FDF0F1"/>
+          <path d="M130 186 L132 92 M330 186 L328 92" stroke="#5F4D50" stroke-width="1.2"/>
+          <rect x="150" y="128" width="160" height="56" rx="4" fill="url(#f3cHc)" stroke="#1C1214"/>
+          <path d="M560 186 L596 92 M730 186 L694 92" stroke="#5F4D50" stroke-width="1.2"/>
+          <rect x="606" y="128" width="78" height="56" rx="4" fill="url(#f3cHc)" stroke="#1C1214"/>
+          <rect x="250" y="246" width="3" height="18" fill="#C8102E" stroke="none"/>
+          <rect x="250" y="272" width="414" height="18" rx="3" fill="#EF3340" stroke="#1C1214"/>
+        </g>
+
+        <text class="f3cA" x="56" y="68">AT HOME · 1 deg 22' N · cos = 0.99972</text>
+        <text class="f3cS" x="56" y="84">meridians almost parallel; a degree is 111.29 km wide</text>
+        <text class="f3cL" x="235" y="202" text-anchor="middle">raw vs haversine: 1.22 m mean · 14.08 m worst</text>
+        <text class="f3cS" x="235" y="218" text-anchor="middle">0 of 332 nearest exits change</text>
+
+        <text class="f3cA" x="466" y="68">SHIFTED NORTH · 60 deg N · cos = 0.5 (constructed)</text>
+        <text class="f3cS" x="466" y="84">meridians converge; the same points are half as wide</text>
+        <text class="f3cL" x="645" y="202" text-anchor="middle">raw vs haversine: 276.03 m mean · 2,384.4 m worst</text>
+        <text class="f3cS" x="645" y="218" text-anchor="middle">124 of 332 nearest exits change</text>
+
+        <text class="f3cL" x="40" y="259">mean abs error, 1 deg 22' N</text>
+        <text class="f3cV" x="262" y="260">1.22 m</text>
+        <text class="f3cL" x="40" y="285">mean abs error, 60 deg N</text>
+        <text class="f3cV" x="674" y="286">276.03 m</text>
+
+        <text class="f3cN" x="30" y="340">Same points, same two formulas, same code. The latitude moved by 58.6333 deg and the shortcut's error grew 226 times.</text>
+      </svg>
+      <figcaption>🔍 Click to zoom - the bars share one scale; the Singapore sliver is the error most spreadsheets live with, the red bar is what the identical code does in the north</figcaption>
+    </figure>
+    <p class="mono">Contains information from Master Plan 2019 Subzone Boundary (No Sea) (GEOJSON) and LTA MRT Station Exit (GEOJSON) accessed on 2026-10-22 from data.gov.sg which is made available under the terms of the Singapore Open Data Licence version 1.0 https://data.gov.sg/open-data-licence</p>
+
+    <details class="card">
+      <summary><span class="mode live">Live</span>What 124 of 332 means for a ranking<span class="mini">2 min</span><span class="caret">▶</span></summary>
+      <div class="body">
+        <p>At 1 deg 22' N, raw degrees and haversine disagree by 1.22 m on average and never change a nearest exit. At 60 deg N the same two functions on the same points disagree by 276.03 m on average, 2,384.4 m at worst, and 124 of the 332 subzones get a different nearest exit. The mean error grew by a factor of 226; more than a third of the answers changed. Nothing in the code is latitude-aware except haversine's cosine term, and that is the entire difference. A method that is "fine" is fine at a latitude. Write the latitude range next to the method in the notes, and treat a dataset from a different range as a different problem.</p>
+      </div>
+    </details>
+
+    <details class="card">
+      <summary><span class="mode self">Self-study</span>Why the order of errors flips<span class="mini">2 min</span><span class="caret">▶</span></summary>
+      <div class="body">
+        <p>Part 2 said that near the equator the sphere is the bigger error and the cosine the smaller one. The 60 deg N experiment is the other half of that sentence. The sphere's error comes from flattening and is a fraction of a percent everywhere on Earth. The cosine's error is 1 - cos(latitude) on the east-west axis: 0.03% at 1 deg 22' N, 50% at 60 deg N. One of the two errors is roughly constant and the other runs from nothing to half, so there must be a latitude where they cross, and it is not far north of Singapore. South of it, choose the ellipsoid over the sphere and you gain more than choosing the sphere over the flat grid. North of it, the cosine dominates and any formula that carries it, haversine included, is a large improvement on the shortcut. The projection, where one exists for the place, is right about both.</p>
+      </div>
+    </details>
+
+    <div class="callout example">
+      <span class="ex-pill">Real world</span>
+      <p><strong>Arif's follow-up (constructed).</strong> Arif asks why the desk bothers with the third formula if the first two agree with it to a few metres. Mei shows him the shifted table: the same question, asked of a town council in the north, would get 124 wrong answers out of 332 with the shortcut. The desk writes code once and reuses it; the cheap formula is cheap only while nobody moves.</p>
+    </div>
+  </section>
+
+  <section class="section" id="demo-1">
+    <div class="section-kicker">
+      <span class="klabel">Build-along</span>
+      <h2>Three functions, one loop, one comparison</h2>
+      <span class="tag demo">★ 22 min · everyone builds</span>
+    </div>
+    <p class="lede">Mei starts from the two real files in her download folder (URA subzones, LTA exits), computes a centroid per subzone, writes the three distance functions, runs the 203,516-pair loop three times, and prints the comparison. Do the same. The reference numbers in the comments are the bench canon, computed on the shipped geometry, which is simplified to 0.0003 deg and quantised for the page; your raw-file centroids will sit a little differently, so your medians and errors will differ by a little while the pattern will not.</p>
+
+    <figure class="zoomable">
+      <svg viewBox="0 0 880 300" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="A pipeline of boxes with arrows. First box: centroids, 332 area-weighted points in degrees. Then three stacked boxes: raw degrees, haversine, projected, the three functions. Arrows from each into one loop box: 332 times 613 equals 203,516 pairs, run three times. Then a box filled in flag red: compare against projected, error in metres, nearest changed. Last box: the table for Arif, one column per formula. The bottom note says the comparison box is the point of the build; a distance you cannot check against another is a guess with decimals.">
+        <defs>
+          <filter id="f3dSk" x="-3%" y="-3%" width="106%" height="106%"><feTurbulence type="fractalNoise" baseFrequency="0.02" numOctaves="2" seed="71" result="n"/><feDisplacementMap in="SourceGraphic" in2="n" scale="2.4" xChannelSelector="R" yChannelSelector="G"/></filter>
+          <marker id="f3dAr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M1 1 L9 5 L1 9" fill="none" stroke="#1C1214" stroke-width="1.6" stroke-linecap="round"/></marker>
+        </defs>
+        <style>
+          .f3dH { font: 800 12px Inter, sans-serif; fill: #1C1214; }
+          .f3dL { font: 600 12px Inter, sans-serif; fill: #1C1214; }
+          .f3dS { font: 400 11px Inter, sans-serif; fill: #5F4D50; }
+          .f3dB { font: 800 11px Inter, sans-serif; fill: #8E0C22; }
+          .f3dN { font: 400 12px Inter, sans-serif; fill: #5F4D50; }
+        </style>
+
+        <text class="f3dH" x="30" y="26">THE DESK'S BUILD: THREE DISTANCES, THEN THE COMPARISON THAT MAKES THEM MEAN SOMETHING</text>
+
+        <g filter="url(#f3dSk)" fill="none" stroke="#1C1214" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="40" y="110" width="140" height="60" rx="10" transform="rotate(-0.7 110 140)" fill="#FFFFFF"/>
+          <rect x="230" y="56" width="130" height="38" rx="8" transform="rotate(0.8 295 75)" fill="#FDF0F1"/>
+          <rect x="230" y="121" width="130" height="38" rx="8" transform="rotate(-0.6 295 140)" fill="#FDF0F1"/>
+          <rect x="230" y="186" width="130" height="38" rx="8" transform="rotate(0.5 295 205)" fill="#FDF0F1"/>
+          <rect x="420" y="110" width="140" height="60" rx="10" transform="rotate(0.6 490 140)" fill="#FFFFFF"/>
+          <rect x="600" y="110" width="140" height="60" rx="10" transform="rotate(-0.6 670 140)" fill="#EF3340"/>
+          <rect x="760" y="110" width="90" height="60" rx="10" transform="rotate(0.7 805 140)" fill="#FFFFFF"/>
+          <path d="M182 140 L196 140 L196 75 L228 75" marker-end="url(#f3dAr)"/>
+          <path d="M196 140 L228 140" marker-end="url(#f3dAr)"/>
+          <path d="M196 140 L196 205 L228 205" marker-end="url(#f3dAr)"/>
+          <path d="M362 75 L394 75 L394 140 L418 140" marker-end="url(#f3dAr)"/>
+          <path d="M362 140 L394 140"/>
+          <path d="M362 205 L394 205 L394 140"/>
+          <path d="M562 140 L598 140" marker-end="url(#f3dAr)"/>
+          <path d="M742 140 L758 140" marker-end="url(#f3dAr)"/>
+        </g>
+
+        <text class="f3dL" x="110" y="134" text-anchor="middle">1 · centroids</text>
+        <text class="f3dS" x="110" y="152" text-anchor="middle">332 points, degrees</text>
+        <text class="f3dL" x="295" y="80" text-anchor="middle">2a · rawdeg()</text>
+        <text class="f3dL" x="295" y="145" text-anchor="middle">2b · haversine()</text>
+        <text class="f3dL" x="295" y="210" text-anchor="middle">2c · projected()</text>
+        <text class="f3dL" x="490" y="134" text-anchor="middle">3 · the loop</text>
+        <text class="f3dS" x="490" y="152" text-anchor="middle">332 x 613 = 203,516, x 3</text>
+        <text class="f3dL" x="670" y="134" text-anchor="middle">4 · compare</text>
+        <text class="f3dL" x="670" y="152" text-anchor="middle">error vs projected, m</text>
+        <text class="f3dL" x="805" y="134" text-anchor="middle">5 · table</text>
+        <text class="f3dS" x="805" y="152" text-anchor="middle">for Arif</text>
+        <text class="f3dB" x="670" y="196" text-anchor="middle">mean, worst, nearest changed</text>
+        <text class="f3dS" x="670" y="212" text-anchor="middle">three numbers per formula</text>
+
+        <text class="f3dN" x="30" y="282">Box 4 is the point of the build. A distance you cannot check against another formula is a guess with decimals.</text>
+      </svg>
+      <figcaption>🔍 Click to zoom - the three functions share one loop; only the red box turns three columns of metres into a judgement</figcaption>
+    </figure>
+    <p class="mono">Contains information from Master Plan 2019 Subzone Boundary (No Sea) (GEOJSON) and LTA MRT Station Exit (GEOJSON) accessed on 2026-10-22 from data.gov.sg which is made available under the terms of the Singapore Open Data Licence version 1.0 https://data.gov.sg/open-data-licence</p>
+
+    <div class="steps">
+      <div class="step">
+        <p><strong>Load both files and give every subzone one point.</strong> The subzones are <code>d_8594ae9ff96d0c708bc2af633048edfb</code> and the exits <code>d_b39d3a0871985372d7e1637193335da5</code>, both in the download folder from sessions 1 and 2, both [longitude, latitude] on WGS 84. The centroid is the area-weighted planar centroid of every outer ring minus every hole, computed in degrees, which is fine at 1 deg N and said so. Run with <code>-I</code> as before.</p>
+        <div class="prompt-box good"><span class="label">★ Step 1 · centroids</span>import json, math, sys
+sz = json.load(open(sys.argv[1], encoding="utf-8"))["features"]     # URA subzones, 332
+ex = json.load(open(sys.argv[2], encoding="utf-8"))["features"]     # LTA MRT exits, 613
+
+def ring(r):                                  # shoelace: signed area and the centroid sums of one ring
+    a = cx = cy = 0.0
+    for i in range(len(r) - 1):
+        x0, y0 = r[i][:2]; x1, y1 = r[i + 1][:2]
+        w = x0 * y1 - x1 * y0
+        a += w; cx += (x0 + x1) * w; cy += (y0 + y1) * w
+    return a / 2, cx / 6, cy / 6
+
+def centroid(geom):                           # outer rings add, holes subtract, whatever their winding
+    polys = [geom["coordinates"]] if geom["type"] == "Polygon" else geom["coordinates"]
+    A = CX = CY = 0.0
+    for rings in polys:
+        for k, r in enumerate(rings):
+            a, cx, cy = ring(r)
+            s = (1 if k == 0 else -1) * (1 if a &gt; 0 else -1)
+            A += s * a; CX += s * cx; CY += s * cy
+    return CX / A, CY / A
+
+cents = [(f["properties"]["SUBZONE_N"], *centroid(f["geometry"])) for f in sz]
+pts = [(p["properties"]["STATION_NA"] + " " + p["properties"]["EXIT_CODE"], *p["geometry"]["coordinates"][:2]) for p in ex]
+print(len(cents), len(pts))                   # 332 613
+print(cents[0])                               # the first subzone's name and two degrees; your numbers will differ</div>
+      </div>
+      <div class="step">
+        <p><strong>Write the three functions, each with its shape in the comment.</strong> The first is the constant from Part 1 on both axes. The second is haversine with R = 6,371,008.8 m. The third is svy21() from session 1 (the EPSG:3414 series, repeated here so this file runs on its own) followed by Pythagoras. Then test them on one degree of latitude from the origin: the projection should give about 110,574 m, the meridian arc; the constant gives 111,320 by construction; the sphere gives a third number between them, because one radius cannot match both.</p>
+        <div class="prompt-box good"><span class="label">★ Step 2 · three distances</span>DEG_M = 111320.0                             # rung 1: one constant, both axes (assumes a flat grid)
+R = 6371008.8                                # rung 2: sphere radius, metres (IUGG mean radius, reported)
+
+def rawdeg(lon1, lat1, lon2, lat2):          # assumes: flat, cos(latitude) = 1, one degree = one length
+    return math.hypot((lon2 - lon1) * DEG_M, (lat2 - lat1) * DEG_M)
+
+def haversine(lon1, lat1, lon2, lat2):       # assumes: a sphere; the cosine is inside the formula
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    dp, dl = p2 - p1, math.radians(lon2 - lon1)
+    a = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
+    return 2 * R * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+A_, F_ = 6378137.0, 1 / 298.257223563        # WGS 84 ellipsoid; SVY21 / EPSG:3414 as in session 1
+LAT0, LON0 = 1 + 22 / 60, 103 + 50 / 60
+FE, FN, K0 = 28001.642, 38744.572, 1.0
+E2 = 2 * F_ - F_ * F_; EP2 = E2 / (1 - E2); E4 = E2 * E2; E6 = E4 * E2
+def merid(phi):
+    return A_ * ((1 - E2/4 - 3*E4/64 - 5*E6/256) * phi - (3*E2/8 + 3*E4/32 + 45*E6/1024) * math.sin(2*phi)
+                 + (15*E4/256 + 45*E6/1024) * math.sin(4*phi) - (35*E6/3072) * math.sin(6*phi))
+M0 = merid(math.radians(LAT0))
+def svy21(lon, lat):
+    phi, lam = math.radians(lat), math.radians(lon)
+    s, c, t = math.sin(phi), math.cos(phi), math.tan(phi)
+    n = A_ / math.sqrt(1 - E2 * s * s); tt = t * t; cc = EP2 * c * c
+    a1 = (lam - math.radians(LON0)) * c; a2 = a1*a1; a3 = a2*a1; a4 = a3*a1; a5 = a4*a1; a6 = a5*a1
+    x = K0 * n * (a1 + (1 - tt + cc) * a3/6 + (5 - 18*tt + tt*tt + 72*cc - 58*EP2) * a5/120)
+    y = K0 * (merid(phi) - M0 + n * t * (a2/2 + (5 - tt + 9*cc + 4*cc*cc) * a4/24
+              + (61 - 58*tt + tt*tt + 600*cc - 330*EP2) * a6/720))
+    return FE + x, FN + y
+assert svy21(LON0, LAT0) == (28001.642, 38744.572)   # the control point, by definition
+
+def projected(lon1, lat1, lon2, lat2):       # assumes: WGS 84 ellipsoid, projected to SVY21 metres
+    e1, n1 = svy21(lon1, lat1); e2, n2 = svy21(lon2, lat2)
+    return math.hypot(e2 - e1, n2 - n1)
+
+for f in (rawdeg, haversine, projected):     # one degree of latitude, due north from the origin
+    print(f"{f.__name__:&lt;10} {f(LON0, 0.0, LON0, 1.0):10.1f} m")
+# rawdeg       111320.0 m     the constant, by construction
+# haversine    (your output)  one radius: between the other two, right about neither
+# projected    ~110574 m      the meridian arc near the equator, 110.57 km</div>
+      </div>
+      <div class="step">
+        <p><strong>Run the loop three times.</strong> Every centroid against every exit is 332 x 613 = 203,516 distance evaluations per formula. Session 4 is about not doing this; tonight it is fine, it is a second or two, and it is the honest baseline every shortcut there will be checked against.</p>
+        <div class="prompt-box good"><span class="label">★ Step 3 · nearest exit, three ways</span>def nearest(cents, pts, dist):
+    out, evals = [], 0
+    for name, clon, clat in cents:
+        best = None
+        for ename, elon, elat in pts:
+            d = dist(clon, clat, elon, elat); evals += 1
+            if best is None or d &lt; best[1]:
+                best = (ename, d)
+        out.append(best)
+    return out, evals
+
+rows = {}
+for k, f in (("raw", rawdeg), ("haversine", haversine), ("projected", projected)):
+    rows[k], evals = nearest(cents, pts, f)
+    print(k, evals, "distance evaluations")   # 203516 each</div>
+      </div>
+      <div class="step">
+        <p><strong>Compare against the reference, three numbers per formula.</strong> Mean error (the bias), worst absolute error (what can flip a ranking), and how many subzones get a different nearest exit. The canon lines are the bench's on the shipped geometry; expect yours to land near them, not on them.</p>
+        <div class="prompt-box good"><span class="label">★ Step 4 · the comparison</span>def median(xs):
+    s = sorted(xs); n = len(s)
+    return s[n // 2] if n % 2 else (s[n // 2 - 1] + s[n // 2]) / 2
+
+ref = rows["projected"]
+for k in ("raw", "haversine", "projected"):
+    r = rows[k]
+    errs = [a[1] - b[1] for a, b in zip(r, ref)]
+    changed = sum(1 for a, b in zip(r, ref) if a[0] != b[0])
+    print(f"{k:&lt;10} median {median([a[1] for a in r]):7.2f} m   mean err {sum(errs) / len(errs):+6.2f} m"
+          f"   worst {max(abs(e) for e in errs):6.2f} m   nearest changed {changed:3d} of {len(r)}")
+
+# Bench canon on the shipped geometry (simplified 0.0003 deg, quantised); your raw-file numbers will differ a little:
+# raw        median  611.23 m   mean err  +3.79 m   worst  57.03 m   nearest changed   5 of 332
+# haversine  median  610.43 m   mean err  +2.57 m   worst  42.95 m   nearest changed   5 of 332
+# projected  median  610.38 m   mean err  +0.00 m   worst   0.00 m   nearest changed   0 of 332</div>
+      </div>
+      <div class="step">
+        <p><strong>Move everything to 60 deg N and compare raw against haversine.</strong> Add 58.6333 deg to every latitude so the SVY21 origin sits at 60 deg N. This is a constructed position, said so in the print. Projected metres do not apply outside SVY21's area of use, so the reference here is haversine, the formula that at least carries the cosine.</p>
+        <div class="prompt-box good"><span class="label">★ Step 5 · the anti-lever</span>SHIFT = 60 - LAT0                            # 58.6333 deg: the origin lands on 60 deg N (constructed position)
+
+def raw_vs_hav(cents, pts, label):
+    a, _ = nearest(cents, pts, rawdeg); b, _ = nearest(cents, pts, haversine)
+    errs = [abs(x[1] - y[1]) for x, y in zip(a, b)]
+    changed = sum(1 for x, y in zip(a, b) if x[0] != y[0])
+    print(f"{label:&lt;26} mean abs {sum(errs) / len(errs):7.2f} m   worst {max(errs):8.2f} m   nearest changed {changed:3d} of {len(a)}")
+
+raw_vs_hav(cents, pts, "at 1 deg 22' N")
+raw_vs_hav([(n, lon, lat + SHIFT) for n, lon, lat in cents],
+           [(n, lon, lat + SHIFT) for n, lon, lat in pts], "shifted to 60 deg N (constructed)")
+
+# Bench canon on the shipped geometry; your raw-file numbers will differ a little, the factor will not:
+# at 1 deg 22' N             mean abs    1.22 m   worst    14.08 m   nearest changed   0 of 332
+# shifted to 60 deg N        mean abs  276.03 m   worst  2384.40 m   nearest changed 124 of 332</div>
+      </div>
+    </div>
+
+    <div class="callout tip">
+      <p><strong>Ship the reference column, keep the other two in the notes.</strong> Arif's table gets projected metres. Mei's notes get all three columns and the comparison print, dated, with the shape each formula assumes written beside it. When someone reuses the function for a dataset at another latitude, the notes are what will tell them which column they can no longer trust.</p>
+    </div>
+  </section>
+
+  <section class="section" id="exercise">
+    <div class="section-kicker">
+      <span class="klabel">Homework</span>
+      <h2>Before session 4</h2>
+      <span class="tag exercise">30 min</span>
+    </div>
+    <ol>
+      <li><strong>Find the 5 subzones</strong> whose nearest exit changes between raw degrees and projected metres in your run. For each, print the two candidate exits and the two distances under each formula, and say in one line why the ranking flipped (a long distance, a north-south bearing, two exits almost tied).</li>
+      <li><strong>Find your worst case.</strong> Print the subzone with the largest absolute raw-degree error and its bearing to the nearest exit. Check it against Part 1: the worst errors should be long and mostly north-south.</li>
+      <li><strong>Pick a second latitude.</strong> Repeat step 5 with a shift that puts the origin at 30 deg N, where the cosine is 0.866. Write down the mean error and the count of changed nearest exits next to the two you already have, and say in one sentence what the three rows show about the cosine.</li>
+      <li><strong>Count the work.</strong> Your three loops ran 203,516 distance evaluations each. Write down how many a million exits against 332 centroids would need under the same loop. Session 4 starts from that number and refuses to do it.</li>
+    </ol>
+  </section>
+
+  <section class="section" id="quiz">
+    <div class="section-kicker">
+      <span class="klabel">Check yourself</span>
+      <h2>Three questions</h2>
+    </div>
+    <p>Clear all three and session 3 gets stamped in your passport.</p>
+
+    <div class="quiz-q" data-answer="1">
+      <p class="qtext">1 · Haversine fixes the cosine that the raw-degree shortcut ignores. On the real Singapore data it improves the mean error from +3.79 m to +2.57 m, and the two agree to 1.22 m on average. Why so little?</p>
+      <button class="qopt" type="button">A · Because haversine uses the wrong radius for Singapore</button>
+      <button class="qopt" type="button">B · Because at 1 deg 22' N the cosine is 0.99972, so the cosine was never the main error; the remaining error is the sphere's lack of flattening, which haversine keeps</button>
+      <button class="qopt" type="button">C · Because the exits file is only precise to five decimals</button>
+      <button class="qopt" type="button">D · Because haversine is only valid for distances over 100 km</button>
+      <p class="qwhy">Haversine's entire improvement over the shortcut is the cosine, and near the equator the cosine is almost 1. What is left, +2.57 m, is the sphere against the ellipsoid, a 110.57 against 111.32 km mismatch that one radius cannot fix. A points at a constant that is not the issue; C confuses precision with the formula; D is invented.</p>
+    </div>
+
+    <div class="quiz-q" data-answer="3">
+      <p class="qtext">2 · The same 332 centroids and 613 exits are shifted north by 58.6333 deg so the origin sits at 60 deg N. Nothing in the code changes. What happens to raw degrees against haversine?</p>
+      <button class="qopt" type="button">A · Nothing measurable; the points keep their shape in degrees, so the distances are unchanged</button>
+      <button class="qopt" type="button">B · Haversine fails because the sphere's radius is wrong at 60 deg N</button>
+      <button class="qopt" type="button">C · Both formulas improve because the points are further from the equator's bulge</button>
+      <button class="qopt" type="button">D · The mean error goes from 1.22 m to 276.03 m and 124 of 332 nearest exits change, because a degree of longitude is now 55.66 km and the shortcut still multiplies by 111,320</button>
+      <p class="qwhy">The points keep their shape in degrees but not on the ground: at 60 deg N a degree of longitude is half as wide, and the shortcut's constant does not know that. Haversine does, through its cosine term, so the gap between them is the cosine's whole effect. A is the trap the figure is drawn to break; B and C have the mechanism backwards.</p>
+    </div>
+
+    <div class="quiz-q" data-answer="0">
+      <p class="qtext">3 · Priya asks which of the three distance columns is "right". What is the defensible answer for Arif's nearest-exit question in Singapore?</p>
+      <button class="qopt" type="button">A · Projected SVY21 metres are the reference, with the origin control point behind them; raw degrees and haversine are a few metres long on average and up to 57 m at worst, and 327 of 332 nearest exits agree under all three</button>
+      <button class="qopt" type="button">B · Haversine, because it is the standard formula and the others are approximations of it</button>
+      <button class="qopt" type="button">C · Raw degrees, because the three agree to within 57 m and it is the simplest</button>
+      <button class="qopt" type="button">D · None of them, because only a routing engine along the roads gives a real distance</button>
+      <p class="qwhy">The reference is the projection designed for the place and proved by its control point; the other two are measured against it, not assumed. B promotes a sphere over the ellipsoid; C skips the worst case, which is what flips a ranking; D changes the question (as-the-crow-flies distance was what Arif asked, and routing is a different subject).</p>
+    </div>
+
+    <p class="quiz-score"></p>
+  </section>
+
+  <section class="section" id="official">
+    <div class="section-kicker">
+      <span class="klabel">Sources covered</span>
+      <h2>What this session teaches, and where it came from</h2>
+    </div>
+    <div class="covered">
+      <div class="covered-row"><span class="status pill solid">✓</span><span class="name">Urban Redevelopment Authority. Master Plan 2019 Subzone Boundary (No Sea) (GEOJSON). data.gov.sg dataset d_8594ae9ff96d0c708bc2af633048edfb, last updated 2025-12-03, accessed 2026-10-22. Singapore Open Data Licence v1.0.</span><span class="note">332 features counted in the file; the 332 centroids are the area-weighted planar centroid of outer rings minus holes, in degrees</span></div>
+      <div class="covered-row"><span class="status pill solid">✓</span><span class="name">Land Transport Authority. LTA MRT Station Exit (GEOJSON). data.gov.sg dataset d_b39d3a0871985372d7e1637193335da5, last updated 2026-10-18, accessed 2026-10-22. Singapore Open Data Licence v1.0.</span><span class="note">613 points counted in the file; every nearest-exit figure on the page is computed from them</span></div>
+      <div class="covered-row"><span class="status pill solid">✓</span><span class="name">Degree lengths and the cosine</span><span class="note">111.32 km of longitude at the equator, 110.57 km of latitude, 111.29 km at 1 deg 22' N and 55.66 km at 60 deg N all follow from the WGS 84 ellipsoid parameters (a = 6,378,137 m, 1/f = 298.257223563), read in the EPSG registry via epsg.io on 2026-10-22; cos(1 deg 22') = 0.99972, cos(60 deg) = 0.5</span></div>
+      <div class="covered-row"><span class="status pill solid">✓</span><span class="name">The three-rung comparison and the 60 deg N shift</span><span class="note">Computed on the shipped geometry: medians 611.23, 610.43 and 610.38 m; mean errors +3.79 and +2.57 m; worst 57.03 and 42.95 m; 5 of 332 nearest exits changed; raw against haversine 1.22 m mean and 14.08 m worst at home, 276.03 m mean, 2,384.4 m worst and 124 of 332 changed at 60 deg N; 203,516 evaluations per rung. The Python reference and the browser engine agree on every value</span></div>
+      <div class="covered-row"><span class="status pill light">◐</span><span class="name">Sinnott, R. W. (1984). Virtues of the Haversine. Sky and Telescope 68(2):159 (reported).</span><span class="note">The haversine formula as implemented, with R = 6,371,008.8 m (IUGG mean radius, reported); the article was not read at source</span></div>
+      <div class="covered-row"><span class="status pill light">◐</span><span class="name">Vincenty, T. (1975). Direct and Inverse Solutions of Geodesics on the Ellipsoid with Application of Nested Equations. Survey Review 23(176):88-93 (title read on the NGS scan; volume and pages reported).</span><span class="note">Described as the iterative ellipsoidal answer; the accuracy claim is reported; not implemented on any page</span></div>
+      <div class="covered-row"><span class="status pill light">◐</span><span class="name">Snyder, J. P. (1987). Map Projections: A Working Manual. USGS Professional Paper 1395 (reported; transverse Mercator series).</span><span class="note">The svy21() series in step 2; verified against the origin control point and an independent series, not re-read at source</span></div>
+      <div class="covered-row"><span class="status pill light">◐</span><span class="name">Rivermont, Mei, Arif and Priya</span><span class="note">Constructed for teaching; no number about them is a measurement; the 60 deg N position is constructed and said so</span></div>
+    </div>
+    <p class="mono" style="margin-top:14px">Every fact on this page, and its verification tier, is recorded in the course's source map.</p>
+  </section>
+
+  <section class="cheat" id="cheatsheet">
+    <h3>Session 3 cheat sheet <span>· pin this</span></h3>
+    <div class="grid-2">
+      <div class="cheat-item"><b>One cosine</b><span>A degree of longitude is 111.32 km x cos(latitude): 111.29 km at 1 deg 22' N, 55.66 km at 60 deg N. A degree of latitude is 110.57 km near the equator.</span></div>
+      <div class="cheat-item"><b>Three formulas, three shapes</b><span>Raw degrees assume a flat grid. Haversine assumes a sphere (R 6,371,008.8 m). Projected metres assume the ellipsoid, flattened onto SVY21. Name the shape when you name the formula.</span></div>
+      <div class="cheat-item"><b>The Singapore numbers</b><span>Against SVY21 metres: raw +3.79 m mean, 57.03 m worst; haversine +2.57 m mean, 42.95 m worst; 5 of 332 nearest exits change under both. 327 agree.</span></div>
+      <div class="cheat-item"><b>Near the equator, the sphere is the bigger error</b><span>Haversine beats raw degrees by 1.22 m on average here because the cosine is 0.99972. The remaining error is flattening, which only the projection fixes.</span></div>
+      <div class="cheat-item"><b>At 60 deg N the order flips</b><span>Same points, same code: raw against haversine goes from 1.22 m to 276.03 m mean, 14.08 to 2,384.4 m worst, 0 to 124 of 332 nearest exits changed. Write the latitude range next to the method.</span></div>
+      <div class="cheat-item"><b>Mean is bias, worst flips rankings</b><span>Report both. For "which is nearest", the worst case decides. Vincenty (reported) is the iterative ellipsoidal answer when no local projection exists.</span></div>
+    </div>
+  </section>
+
+  <div class="callout next">
+    <span class="nx-pill">Next session</span>
+    <p>Mei has three nearest-exit columns and a reference, at the price of 203,516 distance evaluations per column. Session 4 refuses to pay it: bounding boxes first, then a 500 m grid-cell index built from scratch, candidate-then-exact as the pattern behind every spatial index, and the same 332 answers for 5,528 evaluations instead of 203,516.</p>
+  </div>
+
+  <footer class="pagefoot">
+    <span>Session 3 of 6 · learn-geospatial-with-phoebe · by Phoebe Fu &nbsp;·&nbsp; 📚 <a href="https://phoebefu6.github.io/learn-with-phoebe/">Learn with Phoebe ↗</a></span>
+    <span><a href="02-points-polygons-subzone.html">← Prev: Points, polygons and the subzone</a> &nbsp;·&nbsp; <a href="04-spatial-joins-grid-index.html">Next: Spatial joins and the grid index →</a></span>
+  </footer>
+
+</main>
+
+<script src="../assets/app.js?v=1"></script>
+</body>
+</html>

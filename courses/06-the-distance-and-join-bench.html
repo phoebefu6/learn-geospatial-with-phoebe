@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- social:start -->
+<meta name="description" content="Session 6 of 6. The whole ladder computed live in your browser on real Singapore open data: nearest MRT exit for 332 subzone centroids by raw degrees, haversine and SVY21 metres, then the same answers with a bounding-box prefilter and a 500 m grid index; point in polygon three ways; an anti-lever that moves the points to 60 deg N and a break button that swaps latitude and longitude.">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Learn with Phoebe">
+<meta property="og:title" content="The distance-and-join bench - learn geospatial data with phoebe">
+<meta property="og:description" content="Session 6 of 6. Five rungs, 203,516 pairs, computed live. Raw degrees are out by 57 m at worst here and 2,384 m at 60 deg N; the grid index gets the same answers with 2.7% of the work.">
+<meta property="og:url" content="https://phoebefu6.github.io/learn-geospatial-with-phoebe/courses/06-the-distance-and-join-bench.html">
+<meta property="og:image" content="https://phoebefu6.github.io/learn-geospatial-with-phoebe/assets/og-cover.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="The distance-and-join bench - learn geospatial data with phoebe">
+<meta name="twitter:description" content="Session 6 of 6. 332 subzones, 613 exits, five rungs, computed live.">
+<meta name="twitter:image" content="https://phoebefu6.github.io/learn-geospatial-with-phoebe/assets/og-cover.png">
+<!-- social:end -->
+<title>Session 6 · The distance-and-join bench - learn geospatial data with phoebe</title>
+<link rel="stylesheet" href="../assets/style.css?v=2">
+</head>
+<body>
+
+<div class="toolbar">
+  <div class="wrap">
+    <span class="crumb"><a href="../index.html">learn-geospatial-with-phoebe</a> / Session 6 of 6</span>
+    <button class="btn" id="toggle-all" type="button">Expand all</button>
+    <button class="btn primary" id="zoom-toggle" type="button">Projector zoom: off</button>
+  </div>
+</div>
+
+<header class="masthead">
+  <div class="wrap">
+    <div class="eyebrow">Learn Geospatial Data with Phoebe · Session 6 of 6</div>
+    <h1>The <span class="accent">distance-and-join</span> bench</h1>
+    <p class="sub">Everything the five sessions claimed is measured tonight, on the real geometry, in this page. 332 URA subzone centroids against 613 MRT station exits: the nearest exit and the exits within 500 m, computed five ways, from a flat constant on raw degrees up to a 500 m grid index over projected metres. Every exit joined to its subzone three ways. Then two buttons that should make the bench report a worse number: one moves the same points to 60 deg N and watches the raw-degree error grow by a factor of two hundred; the other swaps latitude and longitude and watches every subzone lose its exits. A Python reference run agrees with this engine on all 142 numbers it prints. Nothing here is modelled: the data is real, the arithmetic is live, and the licence line is on the widget.</p>
+    <div class="chip-row">
+      <span class="chip level">🔴 Bench night</span>
+      <span class="chip audience">Bring the file you checked in session 1</span>
+      <span class="chip audience">No code tonight, all clicking</span>
+      <span class="chip time">45 min</span>
+    </div>
+    <div class="agenda">
+      <span class="a1" style="flex:1">0-3 · Welcome</span>
+      <span class="a2" style="flex:2">3-12 · What the bench computes</span>
+      <span class="a3" style="flex:6">12-38 · The ladder, rung by rung</span>
+      <span class="a4" style="flex:2">38-45 · Breaking it, and Q&amp;A</span>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <section class="section" id="intro">
+    <div class="section-kicker">
+      <span class="klabel">Part 0</span>
+      <h2>Where we start</h2>
+    </div>
+    <p class="lede">Arif's first question in session 1 was "how far is each estate from its nearest MRT exit?". Rivermont is constructed; the data it asks about is real: the URA Master Plan 2019 subzone boundaries (332 polygons, simplified to 5,326 vertices for the page), the LTA MRT station exits (613 points) and, for session 5's join, the NEA dengue clusters of 2026-10-22 and the Census 2020 population, all from data.gov.sg under the Singapore Open Data Licence v1.0. The bench answers Arif's question five times, each with a different idea of what "distance" means or how to find it, and scores every answer against SVY21 metres.</p>
+
+    <div class="legend">
+      <span class="pill">🎫 Clear all three quiz questions to stamp your passport</span>
+      <span class="pill">computed = calculated in this browser from the shipped geometry</span>
+      <span class="pill">reference = SVY21 projected metres, the rung the others are scored against</span>
+    </div>
+
+    <div class="callout win">
+      <p><strong>★ What you walk out with tonight.</strong> The measured size of each shortcut's error in Singapore and at 60 deg N, the honest cost of the full loop against a bounding box and a grid, proof that an index changes the work and not the answer, a bench that reports a worse number when you break the input, and the habit of asking any distance "against what reference, and at what latitude".</p>
+    </div>
+  </section>
+
+  <section class="section" id="part-1">
+    <div class="section-kicker">
+      <span class="klabel">Part 1 · covers what the bench computes</span>
+      <h2>How a map becomes numbers</h2>
+      <span class="tag concept">6 min live</span>
+    </div>
+    <p class="lede">The query set is fixed so every rung is comparable: for each of the 332 subzones, the centroid of its rings; for each centroid, the nearest of the 613 exits and the count of exits within 500 m. Those are 203,516 pairs if you check all of them. Five definitions, the same in the browser and in the Python reference that checked every number on this page.</p>
+
+    <figure class="zoomable">
+      <svg viewBox="0 0 880 320" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="A hand-drawn subzone polygon on the left with its centroid as a flag-red dot, five MRT exits as small dots inside and around it, a dashed line from the centroid to the nearest exit, and a dashed circle of 500 metres around the centroid enclosing one exit. On the right, five definitions: centroid, nearest exit, catchment, point in polygon, and distance evaluations.">
+        <defs>
+          <filter id="f6aSk" x="-3%" y="-3%" width="106%" height="106%"><feTurbulence type="fractalNoise" baseFrequency="0.02" numOctaves="2" seed="43" result="n"/><feDisplacementMap in="SourceGraphic" in2="n" scale="2.4" xChannelSelector="R" yChannelSelector="G"/></filter>
+          <pattern id="f6aHc" patternUnits="userSpaceOnUse" width="7" height="7" patternTransform="rotate(-38)"><line x1="0" y1="0" x2="0" y2="7" stroke="#C8102E" stroke-width="1" opacity=".5"/></pattern>
+        </defs>
+        <style>
+          .f6aH { font: 800 12px Inter, sans-serif; fill: #1C1214; }
+          .f6aL { font: 600 12px Inter, sans-serif; fill: #1C1214; }
+          .f6aS { font: 400 11px Inter, sans-serif; fill: #5F4D50; }
+          .f6aB { font: 800 11px Inter, sans-serif; fill: #8E0C22; }
+          .f6aA { font: 700 11px Inter, sans-serif; fill: #C8102E; }
+          .f6aN { font: 400 12px Inter, sans-serif; fill: #5F4D50; }
+        </style>
+
+        <text class="f6aH" x="30" y="26">ONE SUBZONE, ITS CENTROID, THE EXITS AROUND IT</text>
+
+        <g filter="url(#f6aSk)" fill="none" stroke="#1C1214" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M70 110 L150 62 L260 70 L360 96 L380 190 L340 262 L230 274 L120 250 L60 180 Z" fill="#FDF0F1"/>
+          <circle cx="222" cy="168" r="60" stroke="#8E0C22" stroke-width="1.4" stroke-dasharray="4 3"/>
+          <path d="M222 168 L270 132" stroke-dasharray="5 4"/>
+          <circle cx="270" cy="132" r="4.5" fill="#C8102E" stroke="none"/>
+          <circle cx="332" cy="232" r="4.5" fill="#C8102E" stroke="none"/>
+          <circle cx="120" cy="236" r="4.5" fill="#C8102E" stroke="none"/>
+          <circle cx="440" cy="140" r="4.5" fill="#C8102E" stroke="none"/>
+          <circle cx="470" cy="236" r="4.5" fill="#C8102E" stroke="none"/>
+          <circle cx="222" cy="168" r="7" fill="#EF3340"/>
+        </g>
+
+        <text class="f6aA" x="222" y="196" text-anchor="middle">centroid</text>
+        <text class="f6aB" x="280" y="112">nearest exit</text>
+        <text class="f6aS" x="222" y="246" text-anchor="middle">500 m</text>
+        <text class="f6aS" x="452" y="128">an exit outside</text>
+        <text class="f6aS" x="452" y="258">the polygon</text>
+
+        <text class="f6aH" x="560" y="70">WHAT IS COMPUTED</text>
+        <text class="f6aL" x="560" y="94">centroid</text>
+        <text class="f6aS" x="560" y="110">area-weighted centre of the rings, holes subtracted</text>
+        <text class="f6aL" x="560" y="136">nearest exit</text>
+        <text class="f6aS" x="560" y="152">smallest distance under the rung's formula</text>
+        <text class="f6aL" x="560" y="178">catchment</text>
+        <text class="f6aS" x="560" y="194">exits within 500 m of the centroid</text>
+        <text class="f6aL" x="560" y="220">point in polygon</text>
+        <text class="f6aS" x="560" y="236">even-odd ray casting, exits into subzones</text>
+        <text class="f6aL" x="560" y="262">distance evaluations</text>
+        <text class="f6aS" x="560" y="278">how many pairs ran the formula</text>
+
+        <text class="f6aN" x="30" y="304">332 centroids against 613 exits is 203,516 pairs. The question on every rung: same answers, how much work?</text>
+      </svg>
+      <figcaption>🔍 Click to zoom - the bench never sees a map; it sees a centroid, 613 candidate points and a formula, which is exactly what a data desk's code sees</figcaption>
+    </figure>
+
+    <details class="card" open>
+      <summary><span class="mode live">Live</span>Three numbers to read any rung<span class="mini">3 min</span><span class="caret">▶</span></summary>
+      <div class="body">
+        <p><strong>Error against the reference.</strong> Each rung's nearest-exit distance minus the projected-metre distance for the same centroid, averaged over 332 and at its worst. The sign matters: both shortcuts are long, not random, which tells you the mechanism is systematic. On the reference rung this is 0 by construction.</p>
+        <p><strong>Nearest exit changed, and catchment counts changed.</strong> A distance can be wrong by 50 m and still name the right exit. These two counts say when the wrong formula changes the decision, not just the number: raw degrees and haversine each pick a different nearest exit for 5 of the 332 centroids, and change the 500 m count for 2.</p>
+        <p><strong>Distance evaluations.</strong> How many pairs actually ran the formula. The first three rungs run all 203,516. The bounding box runs 888 for the catchment query; the grid runs 5,528 for nearest and catchment together. Same answers.</p>
+      </div>
+    </details>
+
+    <details class="card">
+      <summary><span class="mode self">Self-study</span>What the shipped geometry is, and is not<span class="mini">3 min</span><span class="caret">▶</span></summary>
+      <div class="body">
+        <p>The 332 subzone boundaries were simplified from 58,530 vertices to 5,326 with a 0.0003 deg tolerance, about 33 m, and quantised to 0.00001 deg, about 1.1 m, so the page loads 135 KB instead of 3 MB. Twenty-two tiny rings collapsed to nothing and were dropped, all slivers or islets. The cost is visible in the join: 3 of the 613 exits fall outside every simplified boundary and 2 fall inside two, where neighbouring simplified edges overlap by a few metres. The widget says the tolerance; a result built on simplified geometry should always say so.</p>
+        <p>Centroids are planar, in degrees, which is fine at 1 deg N and said on the widget. A concave or multi-part subzone can have its centroid outside itself (session 2), and the nearest exit to that centroid is still a well-defined number; it is just not "the subzone's nearest exit" in the sense a resident would mean. That is a boundary choice, and the bench makes it out loud rather than hiding it.</p>
+      </div>
+    </details>
+  </section>
+
+  <section class="section" id="bench">
+    <div class="section-kicker">
+      <span class="klabel">Build-along · the bench</span>
+      <h2>Five rungs, 203,516 pairs, computed as you click</h2>
+      <span class="tag demo">★ 26 min · the main event</span>
+    </div>
+    <p class="lede">The bench opens on rung 1 with Bishan East selected. Read the rule line first, then the verdict, then the six numbers, then the subzone card and the map. Climb the rungs in order and say out loud what changed and what did not before moving on. Pick other subzones from the list: the five whose nearest exit changes between rungs 1 and 3 are worth finding. Then press the two buttons at the bottom.</p>
+
+    <div id="geo-bench" class="geo-bench" data-subzone="BISHAN EAST" data-rung="raw"></div>
+
+    <div class="callout tip">
+      <p><strong>Read it in this order.</strong> On rung 1, Bishan East's nearest exit is Bishan MRT Station Exit D at 345.9 m by raw degrees, 345.4 m in projected metres, one exit within 500 m under both. Half a metre on this subzone, 57 m on the worst one: the error of a shortcut is a distribution, and the worst case is what decides whether a decision flips.</p>
+    </div>
+  </section>
+
+  <section class="section" id="part-2">
+    <div class="section-kicker">
+      <span class="klabel">Part 2 · covers what the five rungs show</span>
+      <h2>Wrong by metres, or right with 2.7% of the work</h2>
+      <span class="tag concept">6 min live</span>
+    </div>
+    <p class="lede">The bench computes these live; the numbers here are the ones it prints, written down so they can be argued with after class. They agree with the independent Python run on every value.</p>
+
+    <figure class="zoomable">
+      <svg viewBox="0 0 880 350" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Five rows, one per rung, with two bars each. Left bars: worst error in metres against projected: raw degrees 57.0, haversine 43.0, projected 0, bbox prefilter 0, grid index 0. Right bars: distance evaluations: 203,516 for the first three rungs, 888 for the bounding-box prefilter on the catchment query, 5,528 for the grid index on nearest and catchment together. The note says rungs 1 and 2 are wrong by metres and rungs 4 and 5 are right with 0.4% and 2.7% of the work.">
+        <defs>
+          <filter id="f6bSk" x="-3%" y="-3%" width="106%" height="106%"><feTurbulence type="fractalNoise" baseFrequency="0.02" numOctaves="2" seed="47" result="n"/><feDisplacementMap in="SourceGraphic" in2="n" scale="2.4" xChannelSelector="R" yChannelSelector="G"/></filter>
+          <pattern id="f6bHc" patternUnits="userSpaceOnUse" width="7" height="7" patternTransform="rotate(-38)"><line x1="0" y1="0" x2="0" y2="7" stroke="#C8102E" stroke-width="1" opacity=".5"/></pattern>
+        </defs>
+        <style>
+          .f6bH { font: 800 12px Inter, sans-serif; fill: #1C1214; }
+          .f6bL { font: 600 12px Inter, sans-serif; fill: #1C1214; }
+          .f6bS { font: 400 11px Inter, sans-serif; fill: #5F4D50; }
+          .f6bV { font: 800 12px Inter, sans-serif; fill: #8E0C22; }
+          .f6bA { font: 700 11px Inter, sans-serif; fill: #C8102E; }
+          .f6bN { font: 400 12px Inter, sans-serif; fill: #5F4D50; }
+        </style>
+
+        <text class="f6bH" x="30" y="26">FIVE RUNGS, TWO NUMBERS EACH, SAME 332 CENTROIDS</text>
+        <text class="f6bA" x="200" y="54">WORST ERROR vs PROJECTED, METRES</text>
+        <text class="f6bA" x="560" y="54">DISTANCE EVALUATIONS</text>
+
+        <g filter="url(#f6bSk)" fill="none" stroke="#1C1214" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="200" y="66" width="200" height="26" rx="4" fill="#FEF2F2" stroke="#991B1B"/>
+          <rect x="200" y="118" width="151" height="26" rx="4" fill="#FEF2F2" stroke="#991B1B"/>
+          <rect x="200" y="170" width="4" height="26" rx="2" fill="#C8102E"/>
+          <rect x="200" y="222" width="4" height="26" rx="2" fill="#C8102E"/>
+          <rect x="200" y="274" width="4" height="26" rx="2" fill="#C8102E"/>
+          <rect x="560" y="66" width="260" height="26" rx="4" fill="url(#f6bHc)"/>
+          <rect x="560" y="118" width="260" height="26" rx="4" fill="url(#f6bHc)"/>
+          <rect x="560" y="170" width="260" height="26" rx="4" fill="url(#f6bHc)"/>
+          <rect x="560" y="222" width="4" height="26" rx="2" fill="#EF3340"/>
+          <rect x="560" y="274" width="8" height="26" rx="2" fill="#EF3340"/>
+        </g>
+
+        <text class="f6bL" x="188" y="79" text-anchor="end">1 raw degrees</text>
+        <text class="f6bL" x="188" y="131" text-anchor="end">2 haversine</text>
+        <text class="f6bL" x="188" y="183" text-anchor="end">3 projected (reference)</text>
+        <text class="f6bL" x="188" y="235" text-anchor="end">4 + bbox prefilter</text>
+        <text class="f6bL" x="188" y="287" text-anchor="end">5 + grid index</text>
+        <text class="f6bV" x="410" y="84">57.0</text>
+        <text class="f6bV" x="361" y="136">43.0</text>
+        <text class="f6bV" x="214" y="188">0</text>
+        <text class="f6bV" x="214" y="240">0</text>
+        <text class="f6bV" x="214" y="292">0</text>
+        <text class="f6bV" x="824" y="84">203,516</text>
+        <text class="f6bV" x="824" y="136">203,516</text>
+        <text class="f6bV" x="824" y="188">203,516</text>
+        <text class="f6bV" x="574" y="240">888  (catchment query)</text>
+        <text class="f6bV" x="578" y="292">5,528  (nearest + catchment)</text>
+
+        <text class="f6bN" x="30" y="326">Rungs 1 and 2 are wrong by metres with all the work. Rungs 4 and 5 are exactly right with 0.4% and 2.7% of it.</text>
+      </svg>
+      <figcaption>🔍 Click to zoom - the two columns answer different questions, which is the point: a formula decides how wrong, an index decides how much work</figcaption>
+    </figure>
+
+    <details class="card">
+      <summary><span class="mode live">Live</span>Finding 1: the sphere is the bigger error at 1 deg N<span class="mini">2 min</span><span class="caret">▶</span></summary>
+      <div class="body">
+        <p>Raw degrees with one constant are 3.79 m too long on average and 57.03 m at worst; the median nearest exit is 611.23 m against 610.38 m projected. Haversine is 2.57 m too long on average (2.86 m in absolute terms) and 42.95 m at worst, median 610.43 m. The two shortcuts differ by about a metre on average. The cosine that haversine handles and raw degrees ignore is worth 0.03% at this latitude; the ellipsoid that neither handles is worth 0.7% on north-south distances, and a sphere of one radius cannot get both axes right. Session 3's claim was that near the equator the ellipsoid matters more than the latitude. Measured.</p>
+        <p>Both shortcuts change the nearest exit for 5 of 332 centroids and the 500 m count for 2. Small, and not zero: a desk reporting "estates more than 500 m from an exit" to Priya gets two of them wrong with either shortcut.</p>
+      </div>
+    </details>
+
+    <details class="card">
+      <summary><span class="mode live">Live</span>Finding 2: an index changes the work, not the answer<span class="mini">2 min</span><span class="caret">▶</span></summary>
+      <div class="body">
+        <p>Rung 4 keeps projected metres and asks a cheaper question first: is the exit inside a 500 m square around the centroid? Only 888 pairs are, so only 888 run the distance formula for the catchment query, and the counts are identical: 701 exits within 500 m, 0 subzones differing. Rung 5 buckets the 613 exits into 500 m cells once, then for each centroid reads the 3 by 3 cells around it for the catchment and scans outward ring by ring for the nearest, stopping when the best distance found is shorter than the next ring could offer. 5,528 evaluations for both queries, the same 332 nearest exits, the same 701. The pattern is candidate-then-exact, and it is what every spatial index does underneath.</p>
+      </div>
+    </details>
+
+    <details class="card">
+      <summary><span class="mode self">Self-study</span>Finding 3: point in polygon three ways<span class="mini">2 min</span><span class="caret">▶</span></summary>
+      <div class="body">
+        <p>Joining the 613 exits to their subzones by brute force runs 203,516 ray-casting tests and finds 608 exits inside exactly one subzone, 3 inside none and 2 inside two (the simplification artefacts above). Testing each exit against the 332 bounding boxes first gives 1,283 box hits, of which 671 are false, a box containing a point the polygon does not; the exact test then runs 1,283 times instead of 203,516. The 500 m grid over polygon boxes gives 2,396 exact tests after one cell lookup per exit, more than the box method because cells are coarser than boxes, but with no 332-box scan at all. All three agree on every exit. A spatial join that disagrees with brute force on any row is wrong, not fast.</p>
+      </div>
+    </details>
+
+    <div class="callout example">
+      <span class="ex-pill">Real world</span>
+      <p><strong>Kian Teck, in Jurong West.</strong> Select it on the bench. An industrial subzone with 40 residents in the Census 2020 table, which session 5 turns into the darkest cell on a rate map from just 2 dengue cases. Here it is a reminder that a centroid-to-exit distance is a fact about geometry, and that the question "how far is the estate from an exit" assumes there is an estate. The bench answers the geometry; the desk still has to ask whether the question fits the zone.</p>
+    </div>
+  </section>
+
+  <section class="section" id="part-3">
+    <div class="section-kicker">
+      <span class="klabel">Part 3 · covers the anti-lever and the break button</span>
+      <h2>Making the bench report a worse number</h2>
+      <span class="tag concept">6 min live</span>
+    </div>
+    <p class="lede">A bench that can only confirm what you expect measures nothing. Two buttons exist to make it fail. The first keeps every point exactly where it is relative to the others and translates all of them 58.6333 deg north, so the SVY21 origin sits at 60 deg N: a constructed position, nothing in Singapore moved, and the widget says so. The second swaps the two coordinate columns on the exits.</p>
+
+    <figure class="zoomable">
+      <svg viewBox="0 0 880 300" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Two panels. Left, at 1 degree 22 minutes north: a one-degree cell drawn nearly square, 111.29 km wide and 110.57 km tall. Right, at 60 degrees north: the same one-degree cell is 55.66 km wide and about 111 km tall, and a dashed square shows the 111 by 111 km shape that raw degrees assume. The note says raw degrees treat every cell as 111.32 km square, so east-west distances double at 60 degrees north.">
+        <defs>
+          <filter id="f6cSk" x="-3%" y="-3%" width="106%" height="106%"><feTurbulence type="fractalNoise" baseFrequency="0.02" numOctaves="2" seed="53" result="n"/><feDisplacementMap in="SourceGraphic" in2="n" scale="2.4" xChannelSelector="R" yChannelSelector="G"/></filter>
+        </defs>
+        <style>
+          .f6cH { font: 800 12px Inter, sans-serif; fill: #1C1214; }
+          .f6cL { font: 600 12px Inter, sans-serif; fill: #1C1214; }
+          .f6cS { font: 400 11px Inter, sans-serif; fill: #5F4D50; }
+          .f6cR { font: 800 11px Inter, sans-serif; fill: #991B1B; }
+          .f6cV { font: 800 12px Inter, sans-serif; fill: #8E0C22; }
+          .f6cA { font: 700 11px Inter, sans-serif; fill: #C8102E; }
+          .f6cN { font: 400 12px Inter, sans-serif; fill: #5F4D50; }
+        </style>
+
+        <text class="f6cH" x="30" y="26">THE MECHANISM: ONE DEGREE OF LONGITUDE IS cos(LATITUDE) OF A DEGREE OF LATITUDE</text>
+        <text class="f6cA" x="60" y="60">AT 1 deg 22' N (SINGAPORE)</text>
+        <text class="f6cA" x="500" y="60">AT 60 deg N (THE SAME POINTS, TRANSLATED)</text>
+
+        <g filter="url(#f6cSk)" fill="none" stroke="#1C1214" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="120" y="88" width="111" height="111" rx="3" transform="rotate(-0.6 175 143)" fill="#FDF0F1"/>
+          <rect x="560" y="88" width="56" height="111" rx="3" transform="rotate(0.5 588 143)" fill="#EF3340"/>
+          <rect x="560" y="88" width="111" height="111" rx="3" stroke="#991B1B" stroke-dasharray="5 4"/>
+        </g>
+
+        <text class="f6cV" x="175" y="80" text-anchor="middle">111.29 km</text>
+        <text class="f6cV" x="252" y="147">110.57 km</text>
+        <text class="f6cS" x="60" y="236">one degree by one degree, nearly square</text>
+        <text class="f6cS" x="60" y="252">raw degrees are 0.03% long east-west, 0.7% long north-south</text>
+        <text class="f6cV" x="588" y="80" text-anchor="middle">55.66 km</text>
+        <text class="f6cV" x="680" y="147">about 111 km</text>
+        <text class="f6cR" x="680" y="166">dashed: raw-degree assumption</text>
+        <text class="f6cS" x="500" y="236">the same degree is half as wide: cos(60 deg) = 0.5</text>
+        <text class="f6cS" x="500" y="252">raw degrees are 2x long east-west: mean error 276 m, worst 2,384 m</text>
+
+        <text class="f6cN" x="30" y="282">Raw degrees treat every cell as 111.32 km square. Here the cell nearly is; at 60 deg N it is half as wide.</text>
+      </svg>
+      <figcaption>🔍 Click to zoom - the red cell is the real shape of a degree at 60 deg N and the dashed square is the shape the shortcut assumes; the gap between them is the 276 m</figcaption>
+    </figure>
+
+    <details class="card">
+      <summary><span class="mode live">Live</span>The anti-lever: raw degrees at 60 deg N<span class="mini">2 min</span><span class="caret">▶</span></summary>
+      <div class="body">
+        <p><strong>What it does:</strong> adds 58.6333 deg to every latitude, centroids and exits alike, and recomputes nearest exits by raw degrees and by haversine. Haversine is the reference here because SVY21 is defined for Singapore and nowhere else; the shift itself is constructed. <strong>What it prints:</strong> at 1 deg 22' N, raw degrees against haversine have a mean absolute error of 1.22 m, worst 14.08 m, and 0 nearest exits change. At 60 deg N the mean error is 276.03 m, the worst 2,384.4 m, and 124 of 332 nearest exits change. The formula is identical in both runs. The cosine went from 0.99972 to 0.5.</p>
+        <p>The honest nuance: this does not say raw degrees are useless, it says their error is a function of latitude, and that a method validated on Singapore data has been validated only at 1 deg N. A desk that inherits code from a northern-hemisphere project, or lends its own code north, should expect this number, not the Singapore one.</p>
+      </div>
+    </details>
+
+    <details class="card">
+      <summary><span class="mode live">Live</span>The break button: swap latitude and longitude<span class="mini">2 min</span><span class="caret">▶</span></summary>
+      <div class="body">
+        <p><strong>What it does:</strong> every exit's longitude becomes its latitude and the other way round, then the join and the nearest query run again. <strong>What it prints:</strong> the largest "latitude" is now 103.989 deg, which does not exist, so the swap is detectable before any distance is computed, by the range check from session 1. Joined anyway, 332 of 332 subzones contain zero exits and the median nearest exit by haversine is 9,531 km away.</p>
+        <p>The bench is supposed to report that. A bench that still showed 701 exits within 500 m after the swap would be measuring something other than the geometry. Press it once a session: knowing what the failure looks like is how you recognise a quieter version of it in a real file, where only two rows are swapped and the medians barely move.</p>
+      </div>
+    </details>
+
+    <details class="card">
+      <summary><span class="mode self">Self-study</span>How the bench was checked<span class="mini">2 min</span><span class="caret">▶</span></summary>
+      <div class="body">
+        <p>The same engine file runs in this browser and under a server-side runtime, and a separate pure-Python implementation runs the same ladder in the same order. The two outputs are compared by value, 142 numbers, integers exactly and floating-point values within a millionth of a metre, and the comparison script first plants a 0.1% fault in a copy and confirms it is caught. On load, the engine tests itself: the SVY21 origin must land on (28,001.642, 38,744.572), the haversine antipode must equal pi times the radius, and ray casting must be right on a notched square and a square with a hole. Shift the false easting by one metre and the self-test fails. The widget prints the result of that test at the bottom, every time the page opens.</p>
+      </div>
+    </details>
+
+    <div class="callout tip">
+      <p><strong>The sentence to use with a sceptical GM.</strong> "The distances are in SVY21 metres, checked against the projection's own origin; the shortcut version would have been out by up to 57 m here, and the index gives the same answers with 3% of the work. If we ever run this for a city at 60 deg N, the shortcut would be out by kilometres."</p>
+    </div>
+  </section>
+
+  <section class="section" id="exercise">
+    <div class="section-kicker">
+      <span class="klabel">Homework</span>
+      <h2>After the bench</h2>
+      <span class="tag exercise">30 min</span>
+    </div>
+    <ol>
+      <li><strong>Find the five.</strong> Work through the subzone list on rung 1 and find the five centroids whose nearest exit differs from rung 3. Write one line on why each is close to a tie.</li>
+      <li><strong>Find the two.</strong> Which two subzones change their 500 m count between raw degrees and projected metres? How far from 500 m is the exit that moved?</li>
+      <li><strong>Run the Python reference</strong> from the repository on the shipped data and compare its output with the widget's numbers for one subzone. If any value differs, that is a finding worth reporting.</li>
+      <li><strong>Write the latitude range</strong> next to every distance method in a project you own, as session 1 asked, and add the anti-lever's two numbers (1.22 m at 1 deg N, 276 m at 60 deg N) as the reason.</li>
+    </ol>
+  </section>
+
+  <section class="section" id="quiz">
+    <div class="section-kicker">
+      <span class="klabel">Check yourself</span>
+      <h2>Three questions</h2>
+    </div>
+    <p>Clear all three and session 6 gets stamped in your passport.</p>
+
+    <div class="quiz-q" data-answer="1">
+      <p class="qtext">1 · Raw degrees are 57 m out at worst in Singapore and haversine 43 m. A colleague says haversine "fixes the latitude problem, so it should be nearly exact here". What is accurate?</p>
+      <button class="qopt" type="button">A · Haversine is exact on the ellipsoid; the 43 m is a data error</button>
+      <button class="qopt" type="button">B · Haversine handles cos(latitude), which is worth 0.03% at 1 deg N; neither method handles the ellipsoid, which is worth 0.7% north-south, so near the equator the sphere is the bigger error and haversine is only slightly better</button>
+      <button class="qopt" type="button">C · Haversine is worse than raw degrees in Singapore</button>
+      <button class="qopt" type="button">D · The two methods are identical at the equator</button>
+      <p class="qwhy">Measured: mean error +3.79 m against +2.57 m, worst 57.03 m against 42.95 m. Haversine is better, by about a metre on average, because the thing it fixes is small here. At 60 deg N the same comparison is 276 m against haversine's reference, and the order of importance flips.</p>
+    </div>
+
+    <div class="quiz-q" data-answer="3">
+      <p class="qtext">2 · The grid index runs 5,528 distance evaluations instead of 203,516 and returns the same 332 nearest exits and the same 701 catchment exits. What does that prove?</p>
+      <button class="qopt" type="button">A · The grid is more accurate than brute force</button>
+      <button class="qopt" type="button">B · Brute force was computing the wrong thing</button>
+      <button class="qopt" type="button">C · The grid can replace the projection step</button>
+      <button class="qopt" type="button">D · An index changes the work, not the answer: candidate-then-exact keeps the exact test and only shrinks the candidate set, so any disagreement with brute force would mean the index is wrong</button>
+      <p class="qwhy">Accuracy comes from the formula and the projection (rung 3); the index only decides which pairs get the formula. The bench prints both numbers so the two cannot be confused.</p>
+    </div>
+
+    <div class="quiz-q" data-answer="0">
+      <p class="qtext">3 · After the break button, 332 of 332 subzones contain zero exits and the median nearest exit is 9,531 km away. What is the right conclusion?</p>
+      <button class="qopt" type="button">A · The bench measures the geometry: a swap of the two coordinate columns should produce exactly this, and the range check (latitude 103.989 cannot exist) would have caught it before any distance was computed</button>
+      <button class="qopt" type="button">B · The haversine formula fails on Singapore data</button>
+      <button class="qopt" type="button">C · The subzone boundaries are wrong</button>
+      <button class="qopt" type="button">D · The bench is broken and should be ignored</button>
+      <p class="qwhy">A bench that could not report a worse number would be measuring nothing. The swap is the commonest coordinate error, its signature is an impossible latitude, and the gate from session 1 names it at row 1.</p>
+    </div>
+
+    <p class="quiz-score"></p>
+  </section>
+
+  <section class="section" id="official">
+    <div class="section-kicker">
+      <span class="klabel">Sources covered</span>
+      <h2>What this session teaches, and where it came from</h2>
+    </div>
+    <div class="covered">
+      <div class="covered-row"><span class="status pill solid">✓</span><span class="name">Every number on the bench</span><span class="note">Computed in the browser from the shipped geometry of four data.gov.sg datasets (URA subzones, LTA MRT exits, NEA dengue clusters snapshot 2026-10-22, SingStat Census 2020), Singapore Open Data Licence v1.0, simplified and quantised as stated on the widget; verified against an independent Python run, 142 values in agreement</span></div>
+      <div class="covered-row"><span class="status pill solid">✓</span><span class="name">EPSG:3414 SVY21 / Singapore TM</span><span class="note">Parameters read in the EPSG registry via epsg.io; the origin control point and an independent series check hold to under a micrometre</span></div>
+      <div class="covered-row"><span class="status pill solid">✓</span><span class="name">The even-odd rule</span><span class="note">Read in the W3C SVG 2 painting specification (fill-rule); implemented as ray casting over every ring, self-tested on a notched square and a square with a hole</span></div>
+      <div class="covered-row"><span class="status pill light">◐</span><span class="name">Haversine (Sinnott 1984) and the transverse Mercator series (Snyder 1987)</span><span class="note">Reported: standard formulas, not re-read at source; verified by the control point, the antipode property and the independent run</span></div>
+      <div class="covered-row"><span class="status pill light">◐</span><span class="name">The 60 deg N position</span><span class="note">Constructed: the same points translated north; said on the widget. Rivermont, Mei, Arif and Priya are constructed</span></div>
+    </div>
+    <p class="mono" style="margin-top:14px">Every fact on this page, and its verification tier, is recorded in the course's source map.</p>
+  </section>
+
+  <section class="cheat" id="cheatsheet">
+    <h3>Session 6 cheat sheet <span>· pin this</span></h3>
+    <div class="grid-2">
+      <div class="cheat-item"><b>Three readings per rung</b><span>Error against the reference (mean and worst), decisions changed (nearest, catchment), distance evaluations.</span></div>
+      <div class="cheat-item"><b>Shortcuts are long, not random</b><span>Raw degrees +3.79 m mean, 57 m worst; haversine +2.57 m, 43 m worst. Both change 5 nearest exits and 2 counts.</span></div>
+      <div class="cheat-item"><b>The sphere beats the cosine here</b><span>At 1 deg N the ellipsoid is 0.7%, cos(latitude) is 0.03%. At 60 deg N the order flips.</span></div>
+      <div class="cheat-item"><b>An index changes the work</b><span>888 and 5,528 evaluations instead of 203,516, same 332 answers. Candidate-then-exact.</span></div>
+      <div class="cheat-item"><b>The anti-lever</b><span>Same points at 60 deg N: raw degrees 276 m mean, 2,384 m worst, 124 nearest exits change.</span></div>
+      <div class="cheat-item"><b>The break button</b><span>Swap the columns: latitude 103.989, 332 of 332 subzones empty, median 9,531 km. The gate catches it at row 1.</span></div>
+    </div>
+  </section>
+
+  <div class="callout next">
+    <span class="nx-pill">Course home</span>
+    <p>Six stamps means you can name a coordinate's reference system, decide inside from outside by counting crossings, choose a distance formula and say its error at your latitude, join points to polygons without the full loop, read a disease map against three denominators, and prove all of it on a bench that can fail. The desk's rule stays the same on every job: say the system, say the boundary, say the formula, and check the one point whose answer you already know.</p>
+  </div>
+
+  <footer class="pagefoot">
+    <span>Session 6 of 6 · learn-geospatial-with-phoebe · by Phoebe Fu &nbsp;·&nbsp; 📚 <a href="https://phoebefu6.github.io/learn-with-phoebe/">Learn with Phoebe ↗</a></span>
+    <span><a href="05-disease-on-the-map.html">← Prev: Disease on the map</a> &nbsp;·&nbsp; <a href="../index.html">Course home →</a></span>
+  </footer>
+
+</main>
+
+<script src="../assets/geo-sample.js?v=1"></script>
+<script src="../assets/geo-live.js?v=2"></script>
+<script src="../assets/app.js?v=1"></script>
+</body>
+</html>

@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- social:start -->
+<meta name="description" content="Session 4 of 6. Joining 613 MRT exits to 332 URA subzones without testing every pair: the full loop of 203,516 ray-casting tests, the bounding box that cuts the exact tests to 1,283 (671 of the box hits are false), and a 500 m grid-cell index built from a dictionary that finds the nearest exit in 5,528 distance evaluations instead of 203,516, with the same answers. Candidate-then-exact as the pattern behind every spatial index. Real Singapore open data, a constructed town-council data desk.">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Learn with Phoebe">
+<meta property="og:title" content="Spatial joins and the grid index - learn geospatial data with phoebe">
+<meta property="og:description" content="Session 4 of 6. 203,516 tests, or 1,283, or a dictionary lookup: three ways to join points to polygons that all give the same answer, and the pattern they share.">
+<meta property="og:url" content="https://phoebefu6.github.io/learn-geospatial-with-phoebe/courses/04-spatial-joins-grid-index.html">
+<meta property="og:image" content="https://phoebefu6.github.io/learn-geospatial-with-phoebe/assets/og-cover.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Spatial joins and the grid index - learn geospatial data with phoebe">
+<meta name="twitter:description" content="Session 4 of 6. Brute force, bounding box, grid index: same 332 answers, 203,516 against 5,528 evaluations.">
+<meta name="twitter:image" content="https://phoebefu6.github.io/learn-geospatial-with-phoebe/assets/og-cover.png">
+<!-- social:end -->
+<title>Session 4 · Spatial joins and the grid index - learn geospatial data with phoebe</title>
+<link rel="stylesheet" href="../assets/style.css?v=1">
+</head>
+<body>
+
+<div class="toolbar">
+  <div class="wrap">
+    <span class="crumb"><a href="../index.html">learn-geospatial-with-phoebe</a> / Session 4 of 6</span>
+    <button class="btn" id="toggle-all" type="button">Expand all</button>
+    <button class="btn primary" id="zoom-toggle" type="button">Projector zoom: off</button>
+  </div>
+</div>
+
+<header class="masthead">
+  <div class="wrap">
+    <div class="eyebrow">Learn Geospatial Data with Phoebe · Session 4 of 6</div>
+    <h1>Spatial joins and the <span class="accent">grid</span> index</h1>
+    <p class="sub">A spatial join is an ordinary join with a geometric predicate where the equals sign used to be: "this exit is inside this subzone", or "this exit is within 500 m of this centroid". The predicate is the expensive part. Testing 613 exits against 332 subzones the honest way is 203,516 ray-casting tests, and tonight that is fine, because it finishes before you have put your cup down. The same loop on a million rows is not fine, and the fix is not a faster computer. It is a cheap question asked first, so the slow question is asked rarely. We ask it two ways: a bounding box per polygon, and a 500 m grid of cells kept in a dictionary. Both give exactly the answers the full loop gives. One of them does it with a single lookup per point.</p>
+    <div class="chip-row">
+      <span class="chip level">🟠 Deeper</span>
+      <span class="chip audience">Anyone who has waited on a point-in-polygon loop</span>
+      <span class="chip audience">Python standard library only</span>
+      <span class="chip time">45 min</span>
+    </div>
+    <div class="agenda">
+      <span class="a1" style="flex:1">0-3 · Welcome</span>
+      <span class="a2" style="flex:4">3-18 · The loop, the box, the grid</span>
+      <span class="a3" style="flex:5">18-40 · Build-along: a grid index in 30 lines</span>
+      <span class="a4" style="flex:1">40-45 · Q&amp;A</span>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <section class="section" id="intro">
+    <div class="section-kicker">
+      <span class="klabel">Part 0</span>
+      <h2>Where we start</h2>
+    </div>
+    <p class="lede">The running case is constructed. Rivermont is an invented town-council data desk: Mei runs it, Arif is the estates officer who brings the questions, Priya is the general manager who signs off. Nothing about Rivermont is a measurement. The data is real Singapore open data from data.gov.sg (URA subzones, LTA MRT exits, NEA dengue clusters, SingStat Census 2020), accessed 2026-10-22 under the Singapore Open Data Licence v1.0; Rivermont is constructed. By the end of session 3 Mei had the nearest exit for every one of the 332 subzone centroids, in metres, and Arif liked the table. Then he asked the follow-up every desk hears: "Can we do the same for every block, every bus stop and every tree?" The nearest-exit loop that ran in a blink on 332 centroids tests every one of the 613 exits for each query point. Multiply the query set by a thousand and the blink is a lunch break. Tonight is about keeping the same answer while asking far fewer questions.</p>
+
+    <div class="legend">
+      <span class="pill">🎫 Clear all three quiz questions to stamp your passport</span>
+      <span class="pill">Live = presented in the 45 minutes</span>
+      <span class="pill">Self-study = the full depth, after class</span>
+      <span class="pill">★ Build-along = run it yourself</span>
+    </div>
+
+    <div class="callout win">
+      <p><strong>★ What you walk out with tonight.</strong> A clear sense of when brute force is the right answer and when it stops being one; a bounding-box prefilter you can wrap around any point-in-polygon test; a grid-cell index built from a plain dictionary in about 30 lines, with the nearest query by expanding rings; a proof that all three agree on the real files; and one pattern, candidate-then-exact, that lets you read what a spatial database extension or a desktop GIS is doing when it says "index".</p>
+    </div>
+  </section>
+
+  <section class="section" id="part-1">
+    <div class="section-kicker">
+      <span class="klabel">Part 1 · covers the full loop and when it is fine</span>
+      <h2>Every point against every polygon</h2>
+      <span class="tag concept">5 min live</span>
+    </div>
+    <p class="lede">The honest way to join points to polygons is two nested loops: for each exit, for each subzone, run the even-odd test from session 2. For the real files that is 613 x 332 = 203,516 ray-casting tests, and each test walks every edge of the polygon. On a laptop it finishes in seconds. Brute force is not a mistake; it is the reference. Everything faster has to be checked against it, which means the slow loop is the first thing you write, not the thing you skip.</p>
+
+    <figure class="zoomable">
+      <svg viewBox="0 0 880 316" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Left, a hatched rectangle standing for the pile of tests: 332 subzones across, 613 exits down, 203,516 tests in all, each a ray-casting test. Right, three stacked rows showing the pile growing with the number of points: 613 points by 332 polygons is 203,516; 10,000 points is 3,320,000; a million points is 332,000,000, labelled arithmetic rather than a measurement. The note says the pile grows with the product of the two counts.">
+        <defs>
+          <filter id="f4aSk" x="-3%" y="-3%" width="106%" height="106%"><feTurbulence type="fractalNoise" baseFrequency="0.02" numOctaves="2" seed="51" result="n"/><feDisplacementMap in="SourceGraphic" in2="n" scale="2.4" xChannelSelector="R" yChannelSelector="G"/></filter>
+          <pattern id="f4aHc" patternUnits="userSpaceOnUse" width="7" height="7" patternTransform="rotate(-38)"><line x1="0" y1="0" x2="0" y2="7" stroke="#C8102E" stroke-width="1" opacity=".5"/></pattern>
+          <marker id="f4aAr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M1 1 L9 5 L1 9" fill="none" stroke="#1C1214" stroke-width="1.6" stroke-linecap="round"/></marker>
+        </defs>
+        <style>
+          .f4aH { font: 800 12px Inter, sans-serif; fill: #1C1214; }
+          .f4aL { font: 600 12px Inter, sans-serif; fill: #1C1214; }
+          .f4aS { font: 400 11px Inter, sans-serif; fill: #5F4D50; }
+          .f4aB { font: 800 11px Inter, sans-serif; fill: #8E0C22; }
+          .f4aV { font: 800 16px Inter, sans-serif; fill: #8E0C22; }
+          .f4aA { font: 700 11px Inter, sans-serif; fill: #C8102E; }
+          .f4aN { font: 400 12px Inter, sans-serif; fill: #5F4D50; }
+        </style>
+
+        <text class="f4aH" x="30" y="26">THE FULL LOOP: ONE TEST PER PAIR, AND THE PAIRS MULTIPLY</text>
+
+        <g filter="url(#f4aSk)" fill="none" stroke="#1C1214" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="40" y="66" width="380" height="176" rx="8" transform="rotate(-0.4 230 154)" fill="url(#f4aHc)"/>
+          <rect x="150" y="136" width="160" height="36" rx="8" transform="rotate(0.6 230 154)" fill="#FFFFFF"/>
+          <path d="M440 141 A 9 9 0 1 1 431 150" marker-end="url(#f4aAr)" stroke-width="1.6"/>
+          <rect x="460" y="66" width="380" height="44" rx="8" transform="rotate(0.3 650 88)" fill="#FFFFFF"/>
+          <rect x="460" y="124" width="380" height="44" rx="8" transform="rotate(-0.3 650 146)" fill="#FDF0F1"/>
+          <rect x="460" y="182" width="380" height="44" rx="8" transform="rotate(0.4 650 204)" fill="#FDF0F1"/>
+        </g>
+
+        <text class="f4aA" x="230" y="56" text-anchor="middle">332 subzones across</text>
+        <text class="f4aV" x="230" y="160" text-anchor="middle">203,516 tests</text>
+        <text class="f4aA" x="40" y="260">613 exits down, one ray-casting test per cell</text>
+        <text class="f4aL" x="476" y="84">613 points x 332 polygons</text>
+        <text class="f4aB" x="824" y="84" text-anchor="end">203,516 tests, tonight</text>
+        <text class="f4aL" x="476" y="142">10,000 points x 332 polygons</text>
+        <text class="f4aB" x="824" y="142" text-anchor="end">3,320,000 (arithmetic)</text>
+        <text class="f4aL" x="476" y="200">1,000,000 points x 332 polygons</text>
+        <text class="f4aB" x="824" y="200" text-anchor="end">332,000,000 (arithmetic)</text>
+        <text class="f4aS" x="476" y="252">the polygon count stays; the point count is what Arif keeps growing</text>
+
+        <text class="f4aN" x="30" y="300">The pile is the product of the two counts. Fine at 203,516; a different kind of problem at a third of a billion.</text>
+      </svg>
+      <figcaption>🔍 Click to zoom - the hatched pile is tonight's whole job and it is small; the right-hand column is why the pile needs a shortcut before the point count grows</figcaption>
+    </figure>
+    <p class="mono">Contains information from Master Plan 2019 Subzone Boundary (No Sea) (GEOJSON) and LTA MRT Station Exit (GEOJSON) accessed on 2026-10-22 from data.gov.sg which is made available under the terms of the Singapore Open Data Licence version 1.0 https://data.gov.sg/open-data-licence</p>
+
+    <details class="card" open>
+      <summary><span class="mode live">Live</span>What the full loop actually computes<span class="mini">3 min</span><span class="caret">▶</span></summary>
+      <div class="body">
+        <p>Two loops, one predicate. For every one of the 613 exits, for every one of the 332 subzones, cast a ray from the exit and count the polygon edges it crosses; odd is inside, even is outside, over every ring, so holes come free. That is 203,516 tests. Each test is itself a loop over the polygon's edges, and the shipped geometry for the bench carries 5,326 vertices across the 332 subzones, so the inner work is a few million edge comparisons. A laptop does that in seconds. The result on the bench geometry: 608 exits sit inside exactly one subzone, 3 inside none, because they fall outside every simplified boundary, and 2 inside two, where simplification made neighbouring boundaries overlap. Session 2 explained those five; tonight they are the fixed answer every faster method must reproduce.</p>
+        <p>Rivermont is constructed, and this is the moment at the desk where Mei runs the full loop on purpose and keeps the output file. Not because it is fast. Because it is right by construction, and "right by construction" is what you compare a clever method against. A spatial index that disagrees with brute force is a bug, every time, and you can only know that if the brute-force answer is sitting in a file.</p>
+      </div>
+    </details>
+
+    <details class="card">
+      <summary><span class="mode self">Self-study</span>Where the product stops being fine<span class="mini">3 min</span><span class="caret">▶</span></summary>
+      <div class="body">
+        <p>The cost of the full loop is the product of the two counts times the average edge count. Any one of the three can grow. The polygon count rarely does: Singapore has 332 subzones and 55 planning areas and that is that. The edge count grows when you stop simplifying: the raw URA file has 58,530 vertices against the bench's 5,326, so the same 203,516 tests do roughly eleven times the edge work on the raw boundaries (arithmetic from the two counts, not a timing). The point count is the one Arif grows. Every block, every bus stop, every tree is a new set of points against the same 332 polygons, and 1,000,000 points is 332,000,000 tests, which is arithmetic, not a measurement, and also a lunch break you did not plan for.</p>
+        <p>The professional norm is to write the full loop first, time it on the real size you expect in a year, and reach for an index only when that timing is a problem. Indexes add code, and code added without a measured reason is code that will be wrong without a measured symptom. The same logic runs on the SQL side: a join on a spatial predicate without an index is a nested loop, and a spatial database extension will tell you so in its plan. Joins in general are taught next door at <a href="https://phoebefu6.github.io/learn-sql-with-phoebe/courses/b4-joining-tables.html">learn-sql: joining tables</a> and <a href="https://phoebefu6.github.io/learn-python-data-analysis-with-phoebe/courses/03-pandas-core.html">pandas core</a>; only the spatial predicate lives here.</p>
+      </div>
+    </details>
+
+    <div class="callout example">
+      <span class="ex-pill">Real world</span>
+      <p><strong>The overnight job that became a Monday job.</strong> A familiar pattern at any data desk: a point-in-polygon script written for a few hundred sites runs in a moment, so nobody times it. A year later the same script is pointed at every delivery address in the quarter. Nothing is wrong with the code. The product of two counts grew, and the first sign was the job that had not finished by the morning meeting. The fix was not a faster machine; it was asking a cheap question before the slow one, which is the rest of tonight.</p>
+    </div>
+  </section>
+
+  <section class="section" id="part-2">
+    <div class="section-kicker">
+      <span class="klabel">Part 2 · covers the bounding-box prefilter</span>
+      <h2>Ask the cheap question first</h2>
+      <span class="tag concept">5 min live</span>
+    </div>
+    <p class="lede">Every polygon has a bounding box: the smallest axis-aligned rectangle that contains it, four numbers. A point outside the box cannot be inside the polygon, and that test is four comparisons instead of a walk along every edge. On the real files the box says yes 1,283 times out of 203,516, and 671 of those yeses are wrong: the point is in the box but not in the shape. The exact test is run only on the 1,283 candidates, and it rejects the 671. The answers are identical to brute force. The box never says no wrongly; it only says yes too often, and that is exactly the kind of error a second test can fix.</p>
+
+    <figure class="zoomable">
+      <svg viewBox="0 0 880 324" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Left panel: an L-shaped polygon inside its dashed bounding box. Point A sits in the notch, inside the box but outside the shape, and is the false hit. Point B is inside both box and shape. Point C is outside the box and is rejected without an exact test. Right panel: the counts on the real files: 203,516 box tests of four comparisons each; 1,283 box hits; 671 of them are false like A; 612 are true like B; 1,283 exact tests instead of 203,516; 202,233 pairs stop at the box like C. The note says the box never wrongly says no, it says yes too often, and the exact test fixes only the yeses.">
+        <defs>
+          <filter id="f4bSk" x="-3%" y="-3%" width="106%" height="106%"><feTurbulence type="fractalNoise" baseFrequency="0.02" numOctaves="2" seed="63" result="n"/><feDisplacementMap in="SourceGraphic" in2="n" scale="2.4" xChannelSelector="R" yChannelSelector="G"/></filter>
+          <pattern id="f4bHc" patternUnits="userSpaceOnUse" width="7" height="7" patternTransform="rotate(-38)"><line x1="0" y1="0" x2="0" y2="7" stroke="#C8102E" stroke-width="1" opacity=".5"/></pattern>
+        </defs>
+        <style>
+          .f4bH { font: 800 12px Inter, sans-serif; fill: #1C1214; }
+          .f4bL { font: 600 12px Inter, sans-serif; fill: #1C1214; }
+          .f4bS { font: 400 11px Inter, sans-serif; fill: #5F4D50; }
+          .f4bB { font: 800 11px Inter, sans-serif; fill: #8E0C22; }
+          .f4bA { font: 700 11px Inter, sans-serif; fill: #C8102E; }
+          .f4bN { font: 400 12px Inter, sans-serif; fill: #5F4D50; }
+        </style>
+
+        <text class="f4bH" x="30" y="26">THE BOX SAYS YES TOO OFTEN, AND NEVER NO WRONGLY</text>
+
+        <g filter="url(#f4bSk)" fill="none" stroke="#1C1214" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="40" y="50" width="400" height="230" rx="12" transform="rotate(-0.3 240 165)" fill="#FFFFFF"/>
+          <rect x="460" y="50" width="380" height="230" rx="12" transform="rotate(0.3 650 165)" fill="#FDF0F1"/>
+          <path d="M90 100 L300 100 L300 160 L200 160 L200 250 L90 250 Z" fill="url(#f4bHc)"/>
+          <rect x="90" y="100" width="210" height="150" stroke="#C8102E" stroke-width="1.6" stroke-dasharray="6 5"/>
+          <circle cx="225" cy="215" r="7" fill="#EF3340"/>
+          <circle cx="140" cy="135" r="6" fill="#FFFFFF"/>
+          <circle cx="385" cy="195" r="6" fill="#FFFFFF"/>
+          <circle cx="396" cy="92" r="11" stroke-width="1.6"/>
+          <path d="M404 100 L416 112" stroke-width="2.2"/>
+        </g>
+
+        <text class="f4bB" x="236" y="208">A</text>
+        <text class="f4bL" x="151" y="128">B</text>
+        <text class="f4bL" x="396" y="190">C</text>
+        <text class="f4bS" x="306" y="257">dashed = bounding box</text>
+        <text class="f4bS" x="58" y="272">A false hit  ·  B true hit  ·  C rejected by the box</text>
+
+        <text class="f4bA" x="476" y="84">THE BOX TEST ON THE REAL FILES</text>
+        <text class="f4bL" x="476" y="110">203,516 box tests, four comparisons each</text>
+        <text class="f4bL" x="476" y="134">1,283 box hits (the A and B kinds)</text>
+        <text class="f4bL" x="476" y="158">671 are A: box yes, shape no</text>
+        <text class="f4bL" x="476" y="182">612 are B: box yes, shape yes</text>
+        <text class="f4bB" x="476" y="206">1,283 exact tests instead of 203,516</text>
+        <text class="f4bS" x="476" y="234">C kind: 202,233 pairs stop at the box</text>
+        <text class="f4bS" x="476" y="258">same 608 / 3 / 2 answers as the full loop</text>
+
+        <text class="f4bN" x="30" y="308">The box is cheap and never says no wrongly; it says yes too often. The exact test fixes only the yeses.</text>
+      </svg>
+      <figcaption>🔍 Click to zoom - the flag-red dot is the whole reason the exact test still exists: in the box, not in the shape, and only the slow test can tell</figcaption>
+    </figure>
+    <p class="mono">Contains information from Master Plan 2019 Subzone Boundary (No Sea) (GEOJSON) and LTA MRT Station Exit (GEOJSON) accessed on 2026-10-22 from data.gov.sg which is made available under the terms of the Singapore Open Data Licence version 1.0 https://data.gov.sg/open-data-licence</p>
+
+    <details class="card">
+      <summary><span class="mode live">Live</span>Candidate, then exact<span class="mini">3 min</span><span class="caret">▶</span></summary>
+      <div class="body">
+        <p>The prefilter has one job: produce a candidate list that is guaranteed to contain every true match and is allowed to contain extras. Guaranteed is the important word. A box that is too small would say no to a true match and that error could never be repaired downstream; a box that is exactly the polygon's extent can only err by saying yes. Then the exact test, the even-odd ray from session 2, runs on the candidates alone and removes the extras. On the real files that is 1,283 exact tests against 203,516, and the 671 false box hits are the price of a filter that is four comparisons long. 1,283 minus 671 is 612 true pairs, which is the 608 exits inside one subzone plus the 2 exits counted in two.</p>
+        <p>Rivermont is constructed; the arithmetic is from the real files. Mei's check is the one that matters: the join table from the box-then-exact run is byte-for-byte the join table from the full loop. If it were not, the box would be too small somewhere, and that is a bug to find now rather than a wrong count to explain to Priya later.</p>
+      </div>
+    </details>
+
+    <details class="card">
+      <summary><span class="mode self">Self-study</span>Why the box test is still 203,516 tests<span class="mini">3 min</span><span class="caret">▶</span></summary>
+      <div class="body">
+        <p>Look at the counts again. The bounding box cut the exact tests from 203,516 to 1,283, but the box test itself still ran 203,516 times: for every exit, it compared against all 332 boxes. The win is that each of those tests is four comparisons instead of a walk along a polygon's edges, so the total work is far smaller. The number of questions asked did not drop. The cost of each question did. That is the first of two kinds of speed-up, and it is the one with a ceiling: at a million points you still ask 332 million box questions, cheap as each one is.</p>
+        <p>The second kind of speed-up drops the number of questions, and it needs a structure that can answer "which polygons could possibly contain this point?" without looking at all 332 of them. That is what an index is, and Part 3 builds the simplest one that works. Long, thin and diagonal polygons are the bounding box's worst case: a river-shaped subzone fills a small fraction of its own box, so most box hits on it are false. The 671 false hits across the real files are mostly that shape of problem, which is why the exact test is never optional.</p>
+      </div>
+    </details>
+
+    <div class="callout tip">
+      <p><strong>The prefilter may only err in one direction.</strong> Whatever cheap test you put in front of an expensive one, it must never reject a true match. Yes-too-often is repairable by the exact test; no-when-it-should-be-yes is a silent wrong answer. Write that sentence next to the prefilter and test it by comparing against brute force on the real data.</p>
+    </div>
+  </section>
+
+  <section class="section" id="part-3">
+    <div class="section-kicker">
+      <span class="klabel">Part 3 · covers a grid-cell index from scratch</span>
+      <h2>A dictionary of cells</h2>
+      <span class="tag concept">5 min live</span>
+    </div>
+    <p class="lede">Lay a grid of 500 m cells over Singapore in SVY21 metres. The cell a point falls in is two integer divisions: floor(E / 500), floor(N / 500). Put that pair in a dictionary as the key, and as the value the list of polygons whose bounding box covers that cell. Now a point asks one question: "what is in my cell?" The answer comes from a hash lookup, not from 332 box tests, and the exact test runs on that short list. On the real files that is 2,396 exact tests after one lookup per exit, same answers as brute force. The nearest-exit query uses the same grid the other way round, looking in the point's own cell first and widening ring by ring: 5,528 distance evaluations for the nearest exit and the 500 m catchment together, against 203,516 for the full loop, and the same 332 nearest exits.</p>
+
+    <figure class="zoomable">
+      <svg viewBox="0 0 880 376" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Left: a grid of seven by five cells of 500 metres each. The centre cell is filled flag red with the query point as a dot and labelled ring 0. The three by three neighbourhood around it is shaded pale and labelled ring 1. A dashed outline around the five by five block is ring 2. Small white dots are MRT exits scattered through the cells, and a curved arrow from the query point sweeps outward. Right: the index is a dictionary whose key is floor of easting over 500 and floor of northing over 500 and whose value is the exits or subzones in that cell; point in polygon is one lookup then exact tests on that cell's list, 2,396 exact tests and no box tests; nearest exit expands ring 0, ring 1, ring 2 and stops when the best so far is nearer than the next ring, 5,528 distance evaluations against 203,516 with the same 332 answers.">
+        <defs>
+          <filter id="f4cSk" x="-3%" y="-3%" width="106%" height="106%"><feTurbulence type="fractalNoise" baseFrequency="0.02" numOctaves="2" seed="77" result="n"/><feDisplacementMap in="SourceGraphic" in2="n" scale="2.4" xChannelSelector="R" yChannelSelector="G"/></filter>
+          <marker id="f4cAr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M1 1 L9 5 L1 9" fill="none" stroke="#1C1214" stroke-width="1.6" stroke-linecap="round"/></marker>
+        </defs>
+        <style>
+          .f4cH { font: 800 12px Inter, sans-serif; fill: #1C1214; }
+          .f4cL { font: 600 12px Inter, sans-serif; fill: #1C1214; }
+          .f4cS { font: 400 11px Inter, sans-serif; fill: #5F4D50; }
+          .f4cB { font: 800 11px Inter, sans-serif; fill: #8E0C22; }
+          .f4cV { font: 800 16px Inter, sans-serif; fill: #8E0C22; }
+          .f4cA { font: 700 11px Inter, sans-serif; fill: #C8102E; }
+          .f4cN { font: 400 12px Inter, sans-serif; fill: #5F4D50; }
+        </style>
+
+        <text class="f4cH" x="30" y="26">THE GRID INDEX: LOOK IN YOUR OWN CELL FIRST, THEN THE RING AROUND IT</text>
+
+        <g filter="url(#f4cSk)" fill="none" stroke="#1C1214" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="164" y="112" width="156" height="156" fill="#FDF0F1" stroke="none"/>
+          <rect x="216" y="164" width="52" height="52" fill="#EF3340" stroke="none"/>
+          <path d="M60 60 L424 60 M60 112 L424 112 M60 164 L424 164 M60 216 L424 216 M60 268 L424 268 M60 320 L424 320" stroke="#5F4D50" stroke-width="1.2"/>
+          <path d="M60 60 L60 320 M112 60 L112 320 M164 60 L164 320 M216 60 L216 320 M268 60 L268 320 M320 60 L320 320 M372 60 L372 320 M424 60 L424 320" stroke="#5F4D50" stroke-width="1.2"/>
+          <rect x="112" y="60" width="260" height="260" stroke="#C8102E" stroke-width="1.8" stroke-dasharray="6 5" transform="rotate(0.2 242 190)"/>
+          <circle cx="242" cy="186" r="5" fill="#1C1214"/>
+          <circle cx="84" cy="300" r="4" fill="#FFFFFF"/>
+          <circle cx="140" cy="74" r="4" fill="#FFFFFF"/>
+          <circle cx="286" cy="128" r="4" fill="#FFFFFF"/>
+          <circle cx="342" cy="232" r="4" fill="#FFFFFF"/>
+          <circle cx="178" cy="238" r="4" fill="#FFFFFF"/>
+          <circle cx="346" cy="300" r="4" fill="#FFFFFF"/>
+          <circle cx="398" cy="82" r="4" fill="#FFFFFF"/>
+          <circle cx="400" cy="200" r="4" fill="#FFFFFF"/>
+          <circle cx="76" cy="134" r="4" fill="#FFFFFF"/>
+          <path d="M252 196 C 290 230 320 262 334 290" marker-end="url(#f4cAr)" stroke-width="1.6"/>
+        </g>
+
+        <text class="f4cL" x="242" y="177" text-anchor="middle">ring 0</text>
+        <text class="f4cL" x="190" y="142" text-anchor="middle">ring 1</text>
+        <text class="f4cL" x="138" y="104" text-anchor="middle">ring 2</text>
+        <text class="f4cS" x="60" y="342">500 m cells in SVY21 metres; a point looks in its own cell first</text>
+
+        <text class="f4cA" x="520" y="70">THE INDEX IS A DICTIONARY</text>
+        <text class="f4cL" x="520" y="94">key = (floor(E / 500), floor(N / 500))</text>
+        <text class="f4cS" x="520" y="112">value = the exits (or the subzones) in that cell</text>
+        <text class="f4cA" x="520" y="140">POINT IN POLYGON</text>
+        <text class="f4cL" x="520" y="164">one lookup, then exact tests on that cell's list</text>
+        <text class="f4cL" x="520" y="182">2,396 exact tests, no box tests at all</text>
+        <text class="f4cA" x="520" y="210">NEAREST EXIT, EXPANDING RINGS</text>
+        <text class="f4cL" x="520" y="234">ring 0, then ring 1, then ring 2, and so on</text>
+        <text class="f4cS" x="520" y="252">stop when the best so far is nearer than the next ring</text>
+        <text class="f4cV" x="520" y="280">5,528 distance evaluations</text>
+        <text class="f4cS" x="520" y="298">against 203,516 for the full loop, same 332 answers</text>
+
+        <text class="f4cN" x="30" y="366">Candidate, then exact: the index only shortens the list the exact test must read. It never changes the answer.</text>
+      </svg>
+      <figcaption>🔍 Click to zoom - the red cell is the only place the point looks first; the pale ring is where it looks second; the dashed ring is where it stops once nothing farther can be nearer</figcaption>
+    </figure>
+    <p class="mono">Contains information from Master Plan 2019 Subzone Boundary (No Sea) (GEOJSON) and LTA MRT Station Exit (GEOJSON) accessed on 2026-10-22 from data.gov.sg which is made available under the terms of the Singapore Open Data Licence version 1.0 https://data.gov.sg/open-data-licence</p>
+
+    <details class="card">
+      <summary><span class="mode live">Live</span>Building the grid, and the trade it makes<span class="mini">3 min</span><span class="caret">▶</span></summary>
+      <div class="body">
+        <p>Building the index is one pass over the polygons. For each subzone, take its bounding box, work out which cells the box touches (from floor(min E / 500) to floor(max E / 500), the same for N) and append the subzone's id to each of those cells' lists. A subzone a few kilometres across lands in a few dozen cells; a sliver lands in one or two. Querying is one pass over the points: look up the point's cell, run the exact test on every subzone in that list. No box tests at all, because the cell was built from the boxes.</p>
+        <p>Read the two counts side by side, because they teach the trade. The bounding-box run made 1,283 exact tests; the grid run makes 2,396. The grid does more exact work, about 1,100 extra tests (arithmetic from the two counts), because a 500 m cell is coarser than a polygon's own box: a cell at the corner of a subzone's box is in that subzone's list even where the box barely clips it. What the grid removed was the 203,516 box tests, replacing them with 613 dictionary lookups. That is the second kind of speed-up, the one that drops the number of questions, and it is the one that survives a million points. Rivermont is constructed, and Mei picks 500 m because it is the catchment radius Arif asked about in session 3, so the same grid answers both the join and the nearest query.</p>
+      </div>
+    </details>
+
+    <details class="card">
+      <summary><span class="mode self">Self-study</span>Nearest by expanding rings, and when to stop<span class="mini">4 min</span><span class="caret">▶</span></summary>
+      <div class="body">
+        <p>Index the 613 exits by cell the same way. To find the nearest exit to a subzone centroid, look in the centroid's own cell (ring 0) and measure every exit there. Then the eight cells around it (ring 1), then the sixteen around those (ring 2). After finishing ring r, any exit in ring r + 1 or beyond is at least r cells away in a straight line, so if the best distance found so far is at most r x 500 m, no farther ring can hold anything nearer, and you stop. That stopping rule is the whole algorithm, and it is why the query is exact and not approximate: it never guesses, it only declines to look where nothing nearer can be. On the bench geometry the nearest exit and the 500 m catchment for all 332 centroids cost 5,528 distance evaluations against 203,516 for the full loop, and the 332 nearest exits are the same ones, with the same median of 610.38 m.</p>
+        <p>The cell size is a dial. Cells too small and the rings expand many times through empty cells before they find anything; cells too big and each cell holds so many points that the lookup saves little. 500 m is a sensible size when the typical nearest distance is a few hundred metres, which is what session 3 measured. Real spatial indexes, the R-tree in a spatial database extension or a desktop GIS, are trees of nested bounding boxes rather than a flat grid, and they adapt the cell to the data instead of asking you to pick 500. The pattern is unchanged: a cheap structure returns candidates, the exact predicate decides. When a query plan says "index scan" on a spatial join, this is what it means.</p>
+      </div>
+    </details>
+
+    <div class="callout example">
+      <span class="ex-pill">Real world</span>
+      <p><strong>Arif's thousand points (constructed).</strong> Arif comes back with the block list, the bus stops and the trees, and Mei does not rerun the full loop. She builds the grid once from the 332 subzones, which takes a moment, and then every new point set is one lookup per point plus a handful of exact tests. The grid is a fixed cost paid once; the points are the variable cost, and the variable cost is now a dictionary lookup. Priya's question is the right one: "how do we know it gives the same answer?" Mei shows her the assert that compares the grid's join table with the brute-force file from Part 1. Same 613 rows, same subzones.</p>
+    </div>
+  </section>
+
+  <section class="section" id="demo-1">
+    <div class="section-kicker">
+      <span class="klabel">Build-along</span>
+      <h2>A grid index in 30 lines, checked against brute force</h2>
+      <span class="tag demo">★ 22 min · everyone builds</span>
+    </div>
+    <p class="lede">Rivermont is constructed; the files are real. Mei has the URA subzone file and the LTA exits file from the earlier homework in an empty folder, and her <code>svy21()</code> from session 1. Tonight she joins the exits to the subzones three ways, brute force, box-then-exact, and grid, and asserts that all three agree, then does the nearest-exit query by expanding rings and asserts that too. The pair count 203,516 is the same on any version of the two files. The other counts in the comments are the bench's, computed on the simplified geometry shipped with session 6; on the raw file your numbers will differ a little, and the thing to check is that your three methods agree with each other.</p>
+
+    <figure class="zoomable">
+      <svg viewBox="0 0 880 276" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="A pipeline of four boxes left to right: 203,516 pairs, every exit against every zone; candidates, from the box 1,283 or from the grid 2,396; the exact test, filled flag red, the even-odd ray and the slow one; and the same answers, 608 exits in one subzone, 3 in none, 2 in two. A funnel doodle sits above the candidates box. A dashed path under the row shows brute force sending all 203,516 pairs straight to the exact test. The note says the only step an index may skip is the slow one, and it never changes the answer.">
+        <defs>
+          <filter id="f4dSk" x="-3%" y="-3%" width="106%" height="106%"><feTurbulence type="fractalNoise" baseFrequency="0.02" numOctaves="2" seed="89" result="n"/><feDisplacementMap in="SourceGraphic" in2="n" scale="2.4" xChannelSelector="R" yChannelSelector="G"/></filter>
+          <marker id="f4dAr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M1 1 L9 5 L1 9" fill="none" stroke="#1C1214" stroke-width="1.6" stroke-linecap="round"/></marker>
+        </defs>
+        <style>
+          .f4dH { font: 800 12px Inter, sans-serif; fill: #1C1214; }
+          .f4dL { font: 600 12px Inter, sans-serif; fill: #1C1214; }
+          .f4dS { font: 400 11px Inter, sans-serif; fill: #5F4D50; }
+          .f4dB { font: 800 11px Inter, sans-serif; fill: #8E0C22; }
+          .f4dN { font: 400 12px Inter, sans-serif; fill: #5F4D50; }
+        </style>
+
+        <text class="f4dH" x="30" y="26">CANDIDATE, THEN EXACT: THREE ROUTES INTO THE SAME SLOW TEST</text>
+
+        <g filter="url(#f4dSk)" fill="none" stroke="#1C1214" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M330 48 L370 48 L356 70 L356 82 L344 82 L344 70 Z" fill="#FDF0F1" stroke-width="1.6"/>
+          <rect x="40" y="90" width="170" height="64" rx="10" transform="rotate(-0.7 125 122)" fill="#FFFFFF"/>
+          <rect x="250" y="90" width="200" height="64" rx="10" transform="rotate(0.5 350 122)" fill="#FDF0F1"/>
+          <rect x="490" y="90" width="170" height="64" rx="10" transform="rotate(-0.5 575 122)" fill="#EF3340"/>
+          <rect x="700" y="90" width="140" height="64" rx="10" transform="rotate(0.6 770 122)" fill="#FFFFFF"/>
+          <path d="M212 122 L248 122" marker-end="url(#f4dAr)"/>
+          <path d="M452 122 L488 122" marker-end="url(#f4dAr)"/>
+          <path d="M662 122 L698 122" marker-end="url(#f4dAr)"/>
+          <path d="M125 158 L125 214 L575 214 L575 160" marker-end="url(#f4dAr)" stroke="#8E0C22" stroke-dasharray="5 4" stroke-width="1.6"/>
+        </g>
+
+        <text class="f4dL" x="125" y="118" text-anchor="middle">203,516 pairs</text>
+        <text class="f4dS" x="125" y="136" text-anchor="middle">every exit, every zone</text>
+        <text class="f4dL" x="350" y="118" text-anchor="middle">candidates</text>
+        <text class="f4dS" x="350" y="136" text-anchor="middle">box 1,283 or grid 2,396</text>
+        <text class="f4dL" x="575" y="118" text-anchor="middle">exact test</text>
+        <text class="f4dL" x="575" y="136" text-anchor="middle">even-odd, the slow one</text>
+        <text class="f4dL" x="770" y="118" text-anchor="middle">same answers</text>
+        <text class="f4dS" x="770" y="136" text-anchor="middle">608 · 3 · 2</text>
+        <text class="f4dB" x="350" y="180" text-anchor="middle">a shorter list, the same truth</text>
+        <text class="f4dS" x="350" y="236" text-anchor="middle">brute force: all 203,516 pairs go straight to the exact test</text>
+
+        <text class="f4dN" x="30" y="266">The only step an index may shorten is the slow one, and it never changes the answer. If it does, the index is wrong.</text>
+      </svg>
+      <figcaption>🔍 Click to zoom - three ways in, one exact test, one answer; the funnel is where the work is saved and the red box is where the truth is decided</figcaption>
+    </figure>
+    <p class="mono">Contains information from Master Plan 2019 Subzone Boundary (No Sea) (GEOJSON) and LTA MRT Station Exit (GEOJSON) accessed on 2026-10-22 from data.gov.sg which is made available under the terms of the Singapore Open Data Licence version 1.0 https://data.gov.sg/open-data-licence</p>
+
+    <div class="steps">
+      <div class="step">
+        <p><strong>Load both files into metres and run the full loop.</strong> The subzones are <code>d_8594ae9ff96d0c708bc2af633048edfb</code>, the exits <code>d_b39d3a0871985372d7e1637193335da5</code>, both in a fresh download folder, run with <code>python3 -I</code> so nothing in that folder can be imported. Paste your <code>svy21()</code> from session 1 at the top. The even-odd test is repeated here so the file runs on its own; it is the one from session 2.</p>
+        <div class="prompt-box good"><span class="label">★ Step 1 · brute force, the reference</span>import json, sys, math
+from collections import Counter
+# paste svy21(lon, lat) from session 1, step 3, here
+
+def rings_of(g):                              # Polygon -> its rings; MultiPolygon -> every ring of every part
+    return g["coordinates"] if g["type"] == "Polygon" else [r for part in g["coordinates"] for r in part]
+
+def inside(x, y, rings):                      # even-odd over every ring: holes come free (session 2)
+    c = False
+    for ring in rings:
+        for k in range(len(ring)):
+            (x1, y1), (x2, y2) = ring[k - 1], ring[k]
+            if (y1 &gt; y) != (y2 &gt; y) and x &lt; x1 + (y - y1) * (x2 - x1) / (y2 - y1):
+                c = not c
+    return c
+
+sub = json.load(open(sys.argv[1], encoding="utf-8"))["features"]     # 332 subzones
+ex  = json.load(open(sys.argv[2], encoding="utf-8"))["features"]     # 613 exits
+polys = [(f["properties"]["SUBZONE_N"], [[svy21(x, y) for x, y, *_ in r] for r in rings_of(f["geometry"])]) for f in sub]
+pts   = [(p["properties"]["STATION_NA"] + " " + p["properties"]["EXIT_CODE"], svy21(*p["geometry"]["coordinates"][:2])) for p in ex]
+
+tests, brute = 0, {}
+for i, (name, (E, N)) in enumerate(pts):
+    hits = []
+    for j, (zone, rings) in enumerate(polys):
+        tests += 1
+        if inside(E, N, rings): hits.append(j)
+    brute[i] = hits
+print(len(polys), len(pts), tests)             # 332 613 203516   (the product is the same on any version of the files)
+print(Counter(len(h) for h in brute.values()))  # bench geometry: Counter({1: 608, 0: 3, 2: 2}); raw file: your numbers will differ</div>
+      </div>
+      <div class="step">
+        <p><strong>Put a bounding box in front of the exact test, and assert nothing changed.</strong> Four comparisons per pair, then the slow test on the candidates only. The assert is the point of the step: a prefilter that changes the answer is a bug, not an optimisation.</p>
+        <div class="prompt-box good"><span class="label">★ Step 2 · box, then exact</span>def bbox(rings):
+    xs = [x for r in rings for x, y in r]; ys = [y for r in rings for x, y in r]
+    return min(xs), min(ys), max(xs), max(ys)
+
+boxes = [bbox(rings) for zone, rings in polys]
+
+box_hits, exact, viabox = 0, 0, {}
+for i, (name, (E, N)) in enumerate(pts):
+    hits = []
+    for j, (x0, y0, x1, y1) in enumerate(boxes):
+        if x0 &lt;= E &lt;= x1 and y0 &lt;= N &lt;= y1:      # the cheap question: four comparisons
+            box_hits += 1; exact += 1
+            if inside(E, N, polys[j][1]): hits.append(j)
+    viabox[i] = hits
+
+assert viabox == brute                           # same answers, or the box is too small somewhere
+true_pairs = sum(len(h) for h in brute.values())
+print(box_hits, box_hits - true_pairs, exact)    # bench geometry: 1283 671 1283; raw file: your numbers will differ</div>
+      </div>
+      <div class="step">
+        <p><strong>Build the grid.</strong> One dictionary, keyed by cell. For each subzone, every cell its bounding box touches gets the subzone's index appended. This is the whole index, and it is built once.</p>
+        <div class="prompt-box good"><span class="label">★ Step 3 · the index is a dictionary</span>CELL = 500.0                                     # metres, in SVY21; also the catchment radius from session 3
+
+def key(E, N):
+    return (math.floor(E / CELL), math.floor(N / CELL))
+
+grid = {}                                        # cell key -> subzone indexes whose box covers the cell
+for j, (x0, y0, x1, y1) in enumerate(boxes):
+    (cx0, cy0), (cx1, cy1) = key(x0, y0), key(x1, y1)
+    for cx in range(cx0, cx1 + 1):
+        for cy in range(cy0, cy1 + 1):
+            grid.setdefault((cx, cy), []).append(j)
+
+print(len(grid), max(len(v) for v in grid.values()))   # cells used, busiest cell: your numbers will differ (not in the map)</div>
+      </div>
+      <div class="step">
+        <p><strong>Query the grid and assert against brute force again.</strong> One lookup per exit instead of 332 box tests, then the exact test on the cell's list. Expect more exact tests than step 2 and no box tests at all; that is the trade Part 3 described.</p>
+        <div class="prompt-box good"><span class="label">★ Step 4 · one lookup, then exact</span>exact, viagrid = 0, {}
+for i, (name, (E, N)) in enumerate(pts):
+    hits = []
+    for j in grid.get(key(E, N), []):            # ONE dictionary lookup replaces 332 box tests
+        exact += 1
+        if inside(E, N, polys[j][1]): hits.append(j)
+    viagrid[i] = hits
+
+assert viagrid == brute                          # the index may shorten the list; it may not change the answer
+print(exact)                                     # bench geometry: 2396; raw file: your number will differ
+
+for i in list(brute)[:3]:                        # the join table, first three rows; your rows follow your file's order
+    print(pts[i][0], "-&gt;", [polys[j][0] for j in brute[i]])</div>
+      </div>
+      <div class="step">
+        <p><strong>Nearest exit by expanding rings, checked against the full loop.</strong> Index the exits by cell, then for each subzone centroid look in ring 0, ring 1, ring 2 and stop once the best so far is nearer than the next ring could be. The centroid is the area-weighted one from session 2, here in metres. Compare distances, not indexes, so two exits at the same distance cannot fail the check for the wrong reason.</p>
+        <div class="prompt-box good"><span class="label">★ Step 5 · expanding rings</span>egrid = {}                                       # cell key -> exit indexes
+for i, (name, (E, N)) in enumerate(pts):
+    egrid.setdefault(key(E, N), []).append(i)
+
+def nearest(E, N):
+    cx, cy = key(E, N); best, evals, r = (math.inf, None), 0, 0
+    while True:
+        for dx in range(-r, r + 1):
+            for dy in range(-r, r + 1):
+                if max(abs(dx), abs(dy)) != r: continue          # only the cells new to this ring
+                for i in egrid.get((cx + dx, cy + dy), []):
+                    d = math.dist((E, N), pts[i][1]); evals += 1
+                    if d &lt; best[0]: best = (d, i)
+        if best[1] is not None and best[0] &lt;= r * CELL:           # nothing in a farther ring can be nearer
+            return best, evals
+        r += 1
+
+def centroid(rings):                             # area-weighted planar centroid, all rings (session 2)
+    A = Cx = Cy = 0.0
+    for ring in rings:
+        for k in range(len(ring)):
+            (x1, y1), (x2, y2) = ring[k - 1], ring[k]
+            w = x1 * y2 - x2 * y1
+            A += w; Cx += (x1 + x2) * w; Cy += (y1 + y2) * w
+    return Cx / (3 * A), Cy / (3 * A)
+
+cents = [centroid(rings) for zone, rings in polys]
+brute_d = [min(math.dist(c, q) for name, q in pts) for c in cents]           # 332 x 613 = 203,516 evaluations
+grid_d, grid_evals = [], 0
+for c in cents:
+    (d, i), ev = nearest(*c); grid_d.append(d); grid_evals += ev
+
+assert all(abs(a - b) &lt; 1e-6 for a, b in zip(brute_d, grid_d))               # same 332 nearest distances
+print(len(cents) * len(pts), grid_evals)         # 203516 and your own count; the bench's 5528 includes the 500 m catchment too
+print(sorted(grid_d)[len(grid_d) // 2])          # bench geometry median 610.38 m; raw file and metre centroids: your number will differ</div>
+      </div>
+    </div>
+
+    <div class="callout tip">
+      <p><strong>Keep the brute-force output as a fixture.</strong> The three asserts above are the deliverable, not the speed. Save the full-loop join table once; every later index, yours or a spatial database extension's, gets compared against that file before anyone trusts its count. An index that is fast and slightly wrong is the most expensive kind of code a desk can own.</p>
+    </div>
+  </section>
+
+  <section class="section" id="exercise">
+    <div class="section-kicker">
+      <span class="klabel">Homework</span>
+      <h2>Before session 5</h2>
+      <span class="tag exercise">30 min</span>
+    </div>
+    <ol>
+      <li><strong>Change the cell size.</strong> Run step 4 and step 5 again with CELL = 250 and CELL = 1000. Record the exact-test count and the distance-evaluation count for each. The asserts must still pass; only the counts move. Write one sentence on which size you would pick and why.</li>
+      <li><strong>Find the worst box.</strong> For each subzone, compute the fraction of its bounding box its polygon actually fills (area of the polygon over area of the box, both in metres). Name the three subzones with the lowest fraction; those are where the 671-style false hits come from.</li>
+      <li><strong>Break the prefilter on purpose.</strong> Shrink every bounding box by 50 m on each side and rerun step 2. The assert should fail. Count how many true pairs the too-small box lost. That is the error an exact test cannot repair.</li>
+      <li><strong>Download the NEA dengue clusters file</strong> (<code>d_dbfabf16158d1b0e1c420627c0819168</code>) into the same folder and print how many features it has and the CASE_SIZE of each. The file changes daily, so your counts will differ from the 2026-10-22 snapshot. Session 5 joins those polygons to the subzones by centroid, with your grid.</li>
+    </ol>
+  </section>
+
+  <section class="section" id="quiz">
+    <div class="section-kicker">
+      <span class="klabel">Check yourself</span>
+      <h2>Three questions</h2>
+    </div>
+    <p>Clear all three and session 4 gets stamped in your passport.</p>
+
+    <div class="quiz-q" data-answer="1">
+      <p class="qtext">1 · The bounding-box prefilter said yes 1,283 times on the real files and 671 of those were false. Why is that acceptable?</p>
+      <button class="qopt" type="button">A · Because 671 out of 203,516 is a small error rate and the join can tolerate it</button>
+      <button class="qopt" type="button">B · Because a false yes is repaired by the exact test that follows, while a false no could never be; the prefilter is only allowed to err toward yes</button>
+      <button class="qopt" type="button">C · Because bounding boxes are approximate by nature and the 671 are counted as matches anyway</button>
+      <button class="qopt" type="button">D · It is not acceptable; the box should be shrunk until the false hits reach zero</button>
+      <p class="qwhy">The candidate list may contain extras because the exact test removes them; it may not miss a true match because nothing downstream can add it back. A treats the 671 as an error in the answer, which they are not: the answers are identical to brute force. C would make the join wrong. D shrinks the box past the polygon and creates exactly the unrepairable error.</p>
+    </div>
+
+    <div class="quiz-q" data-answer="2">
+      <p class="qtext">2 · The grid index ran 2,396 exact tests, more than the bounding box's 1,283. In what sense is it the faster method?</p>
+      <button class="qopt" type="button">A · It is not; the bounding box is faster because it ran fewer exact tests</button>
+      <button class="qopt" type="button">B · The grid's exact tests are cheaper because the polygons are already in metres</button>
+      <button class="qopt" type="button">C · The box run still asked 203,516 box questions, one per pair; the grid asks one dictionary lookup per point, so the number of questions no longer grows with the polygon count</button>
+      <button class="qopt" type="button">D · The grid skips the exact test for points in cells with only one subzone</button>
+      <p class="qwhy">The box made each question cheaper but still asked all 203,516 of them; the grid drops the question count to one lookup per point, at the price of about 1,100 extra exact tests because a 500 m cell is coarser than a polygon's own box. B is false: the exact test is the same function in both runs. D would change the answer, and the three asserts forbid that.</p>
+    </div>
+
+    <div class="quiz-q" data-answer="0">
+      <p class="qtext">3 · In the expanding-ring nearest query, when is it safe to stop after finishing ring r?</p>
+      <button class="qopt" type="button">A · When the best distance found so far is at most r x 500 m, because any exit in ring r + 1 or beyond is at least that far away</button>
+      <button class="qopt" type="button">B · As soon as ring 0 contains at least one exit</button>
+      <button class="qopt" type="button">C · After ring 1, because the nearest exit is always within one cell of the query point</button>
+      <button class="qopt" type="button">D · When the ring is empty, since an empty ring means there are no more exits</button>
+      <p class="qwhy">The stopping rule compares the best distance so far with the gap to the next ring; that is what makes the query exact rather than approximate. B fails when the query point sits near a cell edge and a nearer exit lies just across it. C assumes a density the data does not promise. D stops too early in a sparse area where the next ring out is the one with the exit.</p>
+    </div>
+
+    <p class="quiz-score"></p>
+  </section>
+
+  <section class="section" id="official">
+    <div class="section-kicker">
+      <span class="klabel">Sources covered</span>
+      <h2>What this session teaches, and where it came from</h2>
+    </div>
+    <div class="covered">
+      <div class="covered-row"><span class="status pill solid">✓</span><span class="name">Urban Redevelopment Authority. Master Plan 2019 Subzone Boundary (No Sea) (GEOJSON). data.gov.sg dataset d_8594ae9ff96d0c708bc2af633048edfb, last updated 2025-12-03, accessed 2026-10-22. Singapore Open Data Licence v1.0.</span><span class="note">Counted in the file: 332 features in 55 planning areas, 58,530 vertices raw; 5,326 vertices in the simplified geometry shipped for session 6</span></div>
+      <div class="covered-row"><span class="status pill solid">✓</span><span class="name">Land Transport Authority. LTA MRT Station Exit (GEOJSON). data.gov.sg dataset d_b39d3a0871985372d7e1637193335da5, last updated 2026-10-18, accessed 2026-10-22. Singapore Open Data Licence v1.0.</span><span class="note">Counted in the file: 613 points, attributes STATION_NA and EXIT_CODE</span></div>
+      <div class="covered-row"><span class="status pill solid">✓</span><span class="name">The join and index counts</span><span class="note">Computed by the session 6 engine on the shipped geometry and matched by the Python reference on 142 values: 203,516 ray-casting tests; 608 / 3 / 2; 1,283 box hits with 671 false; 2,396 exact tests via the 500 m grid; 5,528 distance evaluations for nearest plus catchment against 203,516; median nearest exit 610.38 m; 701 exits within 500 m</span></div>
+      <div class="covered-row"><span class="status pill solid">✓</span><span class="name">W3C. Scalable Vector Graphics (SVG) 2, Painting: Filling, Stroking and Marker Symbols, fill-rule (read 2026-10-22).</span><span class="note">The even-odd rule as the exact test: a ray from the point, count the crossings, odd is inside</span></div>
+      <div class="covered-row"><span class="status pill light">◐</span><span class="name">Tree-shaped spatial indexes (the R-tree family)</span><span class="note">Described as the adaptive form of the same candidate-then-exact pattern; not implemented and not read at source tonight, so taught as a class of tool, not a specification</span></div>
+      <div class="covered-row"><span class="status pill light">◐</span><span class="name">Rivermont, Mei, Arif and Priya</span><span class="note">Constructed for teaching; no number about them is a measurement</span></div>
+    </div>
+    <p class="mono" style="margin-top:14px">Every fact on this page, and its verification tier, is recorded in the course's source map.</p>
+  </section>
+
+  <section class="cheat" id="cheatsheet">
+    <h3>Session 4 cheat sheet <span>· pin this</span></h3>
+    <div class="grid-2">
+      <div class="cheat-item"><b>Brute force is the reference</b><span>613 x 332 = 203,516 tests. Write it first, keep its output, and compare every faster method against that file.</span></div>
+      <div class="cheat-item"><b>Candidate, then exact</b><span>A cheap test produces a list that must contain every true match and may contain extras; the exact test removes the extras. Every spatial index is this.</span></div>
+      <div class="cheat-item"><b>The prefilter errs one way only</b><span>Yes-too-often is repairable; no-when-yes is a silent wrong answer. On the real files: 1,283 box hits, 671 false, same answers.</span></div>
+      <div class="cheat-item"><b>Cheaper questions vs fewer questions</b><span>The box makes each of 203,516 questions cheap. The grid asks one lookup per point: 2,396 exact tests, no box tests, and it survives a million points.</span></div>
+      <div class="cheat-item"><b>The grid is a dictionary</b><span>key = (floor(E / 500), floor(N / 500)) in SVY21 metres; value = what sits in that cell. Built once, queried per point.</span></div>
+      <div class="cheat-item"><b>Stop when nothing farther can be nearer</b><span>After ring r, stop if the best so far is at most r x 500 m. Exact, not approximate: 5,528 evaluations against 203,516, same 332 answers.</span></div>
+    </div>
+  </section>
+
+  <div class="callout next">
+    <span class="nx-pill">Next session</span>
+    <p>Mei can now join any point set to the subzones in a blink and prove the answer. Session 5 joins polygons instead of points: the NEA dengue clusters of 2026-10-22, 8 of them with 141 cases, matched to subzones and planning areas by centroid, then counted three ways with three denominators, and the map that looks completely different each time. A geometry-and-join exercise, with no health advice on the page.</p>
+  </div>
+
+  <footer class="pagefoot">
+    <span>Session 4 of 6 · learn-geospatial-with-phoebe · by Phoebe Fu &nbsp;·&nbsp; 📚 <a href="https://phoebefu6.github.io/learn-with-phoebe/">Learn with Phoebe ↗</a></span>
+    <span><a href="03-distance-three-ways.html">← Prev: Distance three ways</a> &nbsp;·&nbsp; <a href="05-disease-on-the-map.html">Next: Disease on the map →</a></span>
+  </footer>
+
+</main>
+
+<script src="../assets/app.js?v=1"></script>
+</body>
+</html>

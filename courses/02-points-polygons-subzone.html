@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- social:start -->
+<meta name="description" content="Session 2 of 6. A point becomes a zone only through a boundary and a rule. The 332 URA subzones as polygons, multipolygons, rings and holes; the even-odd rule by hand on a notched square and then in code; what simplifying 58,530 vertices to 5,326 does to the answer; and why the boundary you pick changes the count. Real Singapore open data, a constructed town-council data desk.">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Learn with Phoebe">
+<meta property="og:title" content="Points, polygons and the subzone - learn geospatial data with phoebe">
+<meta property="og:description" content="Session 2 of 6. Rings, holes, the even-odd rule, simplification, and the boundary as a decision. 332 subzones, 613 exits, one count three ways.">
+<meta property="og:url" content="https://phoebefu6.github.io/learn-geospatial-with-phoebe/courses/02-points-polygons-subzone.html">
+<meta property="og:image" content="https://phoebefu6.github.io/learn-geospatial-with-phoebe/assets/og-cover.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Points, polygons and the subzone - learn geospatial data with phoebe">
+<meta name="twitter:description" content="Session 2 of 6. The even-odd rule, rings and holes, simplification, and the boundary as a choice.">
+<meta name="twitter:image" content="https://phoebefu6.github.io/learn-geospatial-with-phoebe/assets/og-cover.png">
+<!-- social:end -->
+<title>Session 2 · Points, polygons and the subzone - learn geospatial data with phoebe</title>
+<link rel="stylesheet" href="../assets/style.css?v=2">
+</head>
+<body>
+
+<div class="toolbar">
+  <div class="wrap">
+    <span class="crumb"><a href="../index.html">learn-geospatial-with-phoebe</a> / Session 2 of 6</span>
+    <button class="btn" id="toggle-all" type="button">Expand all</button>
+    <button class="btn primary" id="zoom-toggle" type="button">Projector zoom: off</button>
+  </div>
+</div>
+
+<header class="masthead">
+  <div class="wrap">
+    <div class="eyebrow">Learn Geospatial Data with Phoebe · Session 2 of 6</div>
+    <h1>Points, polygons and the <span class="accent">subzone</span></h1>
+    <p class="sub">Session 1 ended with a row Mei can place: longitude, latitude, reference system named. Arif's next question sounds smaller and is not: "Which subzone is that exit in?" To answer it the desk needs a boundary file, a way to store a shape with an islet or a hole in it, and a rule that decides inside from outside without anybody looking at a map. Tonight we open the real URA subzone file, count what is in it (332 subzones in 55 planning areas, not any number copied from a slide), run the even-odd rule by hand on a shape you can draw on a napkin and then in twelve lines of code, see what simplifying a boundary does to an exit standing near the edge, and watch the same 613 exits give a different count the moment the boundary layer changes.</p>
+    <div class="chip-row">
+      <span class="chip level">🟡 Core</span>
+      <span class="chip audience">Anyone who has to say which zone a point is in</span>
+      <span class="chip audience">Python standard library only</span>
+      <span class="chip time">45 min</span>
+    </div>
+    <div class="agenda">
+      <span class="a1" style="flex:1">0-3 · Welcome</span>
+      <span class="a2" style="flex:4">3-18 · Rings, the rule, the boundary</span>
+      <span class="a3" style="flex:5">18-40 · Build-along: exits per subzone, three ways</span>
+      <span class="a4" style="flex:1">40-45 · Q&amp;A</span>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <section class="section" id="intro">
+    <div class="section-kicker">
+      <span class="klabel">Part 0</span>
+      <h2>Where we start</h2>
+    </div>
+    <p class="lede">The running case is constructed. Rivermont is an invented town-council data desk: Mei runs it, Arif is the estates officer who brings the questions, Priya is the general manager who signs off. Nothing about Rivermont is a measurement. The data is real Singapore open data from data.gov.sg (URA subzones, LTA MRT exits, NEA dengue clusters, SingStat Census 2020), accessed 2026-10-22 under the Singapore Open Data Licence v1.0; Rivermont is constructed. Tonight's two files are the URA Master Plan 2019 Subzone Boundary (No Sea), 332 features, and the LTA MRT Station Exit file from last week, 613 points. Arif wants a table with one row per subzone and a count of exits in each. Priya wants to know why the count she saw on a planning slide last month is different from the one Mei is about to produce. Both questions have the same answer: a boundary is a file, a file has a shape, and a shape plus a rule gives a count. Change any of the three and the number moves.</p>
+
+    <div class="legend">
+      <span class="pill">🎫 Clear all three quiz questions to stamp your passport</span>
+      <span class="pill">Live = presented in the 45 minutes</span>
+      <span class="pill">Self-study = the full depth, after class</span>
+      <span class="pill">★ Build-along = run it yourself</span>
+    </div>
+
+    <div class="callout win">
+      <p><strong>★ What you walk out with tonight.</strong> The vocabulary of a boundary file (polygon, multipolygon, ring, hole) read off the real one; the even-odd rule, done by hand on a notched square so you trust it before you code it; a twelve-line function that puts any point in its subzone and handles holes without a special case; a plain reading of what simplification does and which exits it moves; and the habit of writing the boundary layer next to every count, because the layer is a choice someone made.</p>
+    </div>
+  </section>
+
+  <section class="section" id="part-1">
+    <div class="section-kicker">
+      <span class="klabel">Part 1 · covers polygon, multipolygon, ring, hole, and what the file holds</span>
+      <h2>A boundary is a list of corners</h2>
+      <span class="tag concept">5 min live</span>
+    </div>
+    <p class="lede">Rivermont is constructed; the file Mei opens is not. The URA subzone file is GeoJSON, 332 features, each one a subzone with a geometry and a set of attributes. A geometry of type Polygon is a list of rings; a ring is a closed list of [longitude, latitude] corners whose last point repeats the first. The first ring is the outer edge. Any ring after it is a hole, an area cut out of the shape. A geometry of type MultiPolygon is a list of those lists: one subzone made of several separate pieces, usually a mainland part and an islet with sea between. Counted in the file on 2026-10-22: 321 Polygon and 11 MultiPolygon features, 374 rings of which 13 are holes, 58,530 vertices in all, 55 distinct planning areas and 5 regions, and 50 subzones flagged CA_IND = Y for the Central Area. No <code>crs</code> member, so the convention from session 1 applies: WGS 84, longitude first.</p>
+
+    <figure class="zoomable">
+      <svg viewBox="0 0 880 330" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Three panels. Left: a hand-drawn polygon with one outer ring and a smaller ring inside it labelled hole; the caption says 321 of 332 features are Polygon and the file has 13 holes. Middle: a MultiPolygon drawn as a large part and a small islet with sea between, labelled part 1 and part 2; 11 of 332 features are MultiPolygon and one row holds both parts. Right: the counts read in the file on 2026-10-22, with 332 subzone features in the flag-red box, then 321 Polygon plus 11 MultiPolygon, 374 rings of which 13 are holes, 58,530 vertices, 55 planning areas and 5 regions, CA_IND Y on 50, and no crs member so WGS 84 longitude first.">
+        <defs>
+          <filter id="f2aSk" x="-3%" y="-3%" width="106%" height="106%"><feTurbulence type="fractalNoise" baseFrequency="0.02" numOctaves="2" seed="52" result="n"/><feDisplacementMap in="SourceGraphic" in2="n" scale="2.4" xChannelSelector="R" yChannelSelector="G"/></filter>
+        </defs>
+        <style>
+          .f2aH { font: 800 12px Inter, sans-serif; fill: #1C1214; }
+          .f2aL { font: 600 12px Inter, sans-serif; fill: #1C1214; }
+          .f2aS { font: 400 11px Inter, sans-serif; fill: #5F4D50; }
+          .f2aB { font: 800 11px Inter, sans-serif; fill: #8E0C22; }
+          .f2aA { font: 700 11px Inter, sans-serif; fill: #C8102E; }
+          .f2aN { font: 400 12px Inter, sans-serif; fill: #5F4D50; }
+        </style>
+
+        <text class="f2aH" x="30" y="26">WHAT ONE SUBZONE ROW CAN BE, AND WHAT THE WHOLE FILE HOLDS</text>
+
+        <g filter="url(#f2aSk)" fill="none" stroke="#1C1214" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="40" y="50" width="250" height="230" rx="10" transform="rotate(0.4 165 165)" fill="#FFFFFF"/>
+          <rect x="315" y="50" width="250" height="230" rx="10" transform="rotate(-0.4 440 165)" fill="#FFFFFF"/>
+          <rect x="590" y="50" width="250" height="230" rx="10" transform="rotate(0.3 715 165)" fill="#FDF0F1"/>
+          <path d="M72 112 L205 100 L272 150 L252 232 L122 246 L62 190 Z" fill="#FFFFFF"/>
+          <path d="M142 150 L192 145 L202 190 L152 196 Z" fill="#FDF0F1"/>
+          <circle cx="226" cy="170" r="7" stroke-width="1.6"/>
+          <path d="M231 175 L240 184" stroke-width="1.6"/>
+          <path d="M338 112 L468 104 L498 170 L458 232 L350 236 L328 172 Z" fill="#FFFFFF"/>
+          <path d="M508 186 L554 180 L558 226 L512 232 Z" fill="#FFFFFF"/>
+          <rect x="606" y="86" width="218" height="28" rx="6" transform="rotate(-1.2 715 100)" fill="#EF3340"/>
+        </g>
+
+        <text class="f2aA" x="54" y="72">POLYGON: AN OUTER RING AND A HOLE</text>
+        <text class="f2aS" x="96" y="134">outer ring</text>
+        <text class="f2aS" x="172" y="174" text-anchor="middle">hole</text>
+        <text class="f2aS" x="54" y="260">Polygon: outer ring plus holes</text>
+        <text class="f2aS" x="54" y="274">321 of 332; 13 holes in the file</text>
+
+        <text class="f2aA" x="329" y="72">MULTIPOLYGON: ONE ROW, TWO PARTS</text>
+        <text class="f2aS" x="410" y="172" text-anchor="middle">part 1</text>
+        <text class="f2aS" x="533" y="210" text-anchor="middle">part 2</text>
+        <text class="f2aS" x="329" y="260">MultiPolygon: parts, sea between</text>
+        <text class="f2aS" x="329" y="274">11 of 332; one row holds both parts</text>
+
+        <text class="f2aA" x="604" y="72">COUNTED IN THE FILE, 2026-10-22</text>
+        <text class="f2aL" x="715" y="105" text-anchor="middle">332 subzone features</text>
+        <text class="f2aS" x="606" y="136">321 Polygon + 11 MultiPolygon</text>
+        <text class="f2aS" x="606" y="156">374 rings, 13 of them holes</text>
+        <text class="f2aS" x="606" y="176">58,530 vertices</text>
+        <text class="f2aS" x="606" y="196">55 planning areas, 5 regions</text>
+        <text class="f2aS" x="606" y="216">CA_IND = Y on 50 (Central Area)</text>
+        <text class="f2aS" x="606" y="236">no crs: WGS 84, [lon, lat]</text>
+
+        <text class="f2aN" x="30" y="312">One row is a Polygon or MultiPolygon; each part is an outer ring plus zero or more holes; a hole is a ring too.</text>
+      </svg>
+      <figcaption>🔍 Click to zoom - the red box is the number the whole session rests on, and it came from len(features), not from a slide</figcaption>
+    </figure>
+    <p class="mono">Contains information from Master Plan 2019 Subzone Boundary (No Sea) (GEOJSON) accessed on 2026-10-22 from data.gov.sg which is made available under the terms of the Singapore Open Data Licence version 1.0 https://data.gov.sg/open-data-licence</p>
+
+    <details class="card" open>
+      <summary><span class="mode live">Live</span>What the file holds, read before it is believed<span class="mini">3 min</span><span class="caret">▶</span></summary>
+      <div class="body">
+        <p>The dataset page describes the layer as an "indicative polygon of subzone boundary" and explains the hierarchy: URA divides Singapore into regions, planning areas and subzones, each subzone "usually centred around a focal point such as neighbourhood centre or activity node". It also says something every count built on the file should carry as a footnote: the Master Plan looks 10 to 15 years ahead and "the planning boundaries may not coincide with existing developments". The attributes are OBJECTID, SUBZONE_NO, SUBZONE_N, SUBZONE_C, CA_IND, PLN_AREA_N, PLN_AREA_C, REGION_N, REGION_C, INC_CRC, FMEL_UPD_D, SHAPE.AREA and SHAPE.LEN, with no descriptions on the page, so what each means is read from the values. The dataset was created 2019-12-23, last updated 2025-12-03, and the page says "Data from Sep 2021".</p>
+        <p>Mei's first act is the one from session 1: print the counts before using any of them. 332 features. A number that arrives on a slide, in a brief or in somebody's memory is a claim about the file; <code>len(f["features"])</code> is the file. When the two disagree, the file wins and the slide gets corrected, in writing, with the date it was counted. The desk's rule for a count is the same as its rule for a coordinate: it carries its source or it is not used.</p>
+      </div>
+    </details>
+
+    <details class="card">
+      <summary><span class="mode self">Self-study</span>Rings, holes and the closing point<span class="mini">4 min</span><span class="caret">▶</span></summary>
+      <div class="body">
+        <p>Open one Polygon feature and its <code>coordinates</code> is a list with one or more items; each item is a ring, a list of [longitude, latitude] pairs. A valid ring repeats its first pair as its last, which is why a square has five coordinates, not four, and why a ring with fewer than four pairs encloses nothing. Position zero is the outer ring. Every later ring in the same list is a hole: the file's 13 holes are places where a subzone wraps around something that belongs to a different subzone or to no subzone at all, and the hole is how the file says "not this one" without a second feature. A MultiPolygon's <code>coordinates</code> is one level deeper: a list of parts, each part the same outer-ring-then-holes list. The 11 MultiPolygon subzones are the ones with an islet, a reclaimed strip or a sliver that does not touch the main body; the islet is still that subzone, so it lives in that row.</p>
+        <p>Two consequences for the desk. First, "how many vertices" is a sum over every ring of every part, closing points included, and that is how the 58,530 was counted. Second, any function that decides inside from outside has to visit every ring, holes and islets alike, or it will put a point in a hole inside the subzone that surrounds the hole. Part 2's rule does that for free, which is one of the reasons it is the rule to learn first.</p>
+      </div>
+    </details>
+
+    <div class="callout example">
+      <span class="ex-pill">Real world</span>
+      <p><strong>The count on the slide.</strong> A familiar pattern at any data desk: a boundary count is quoted in a planning deck, copied into a brief, copied into a dashboard title, and nobody along the chain opened the file. When the file is finally counted the two numbers differ, and the question becomes which one the dashboard has been dividing by for a year. Rivermont (constructed) has the same moment in Part 0: Priya's slide and Mei's print disagree. The fix is not to argue. It is to make the print the number and to write where it came from and when.</p>
+    </div>
+  </section>
+
+  <section class="section" id="part-2">
+    <div class="section-kicker">
+      <span class="klabel">Part 2 · covers the even-odd rule by hand, then in code</span>
+      <h2>Inside is an odd number</h2>
+      <span class="tag concept">5 min live</span>
+    </div>
+    <p class="lede">The rule that decides whether a point is inside a shape is older than any software and short enough to do on paper. Draw a ray from the point in any direction to infinity and count how many edges of the shape it crosses. Odd means inside; even means outside. That is the even-odd rule, and the W3C SVG specification defines it exactly that way as one of the two <code>fill-rule</code> values. Rivermont (constructed) uses it on the real subzone rings because it needs no special case for holes and no knowledge of which way a ring was drawn. Mei does it by hand first, on a square with a notch cut out, because a rule you have run with a pencil is a rule you will trust when the code disagrees with the map.</p>
+
+    <figure class="zoomable">
+      <svg viewBox="0 0 880 330" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Two panels. Left: a square with a rectangular notch cut into its right side. Point A sits in the body of the square and sends a ray west that crosses one edge, labelled 1 crossing, inside. Point B sits in the notch and sends a ray north that crosses the notch's top edge and then the square's top edge, labelled 2 crossings, outside. The caption says odd is inside and even is outside whichever way the ray goes. Right: a C-shaped concave polygon; its area-weighted centroid is a flag-red dot in the gap of the C, labelled centroid, outside its own shape; a join placed there answers for the neighbour.">
+        <defs>
+          <filter id="f2bSk" x="-3%" y="-3%" width="106%" height="106%"><feTurbulence type="fractalNoise" baseFrequency="0.02" numOctaves="2" seed="64" result="n"/><feDisplacementMap in="SourceGraphic" in2="n" scale="2.4" xChannelSelector="R" yChannelSelector="G"/></filter>
+          <marker id="f2bAr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M1 1 L9 5 L1 9" fill="none" stroke="#1C1214" stroke-width="1.6" stroke-linecap="round"/></marker>
+        </defs>
+        <style>
+          .f2bH { font: 800 12px Inter, sans-serif; fill: #1C1214; }
+          .f2bL { font: 600 12px Inter, sans-serif; fill: #1C1214; }
+          .f2bS { font: 400 11px Inter, sans-serif; fill: #5F4D50; }
+          .f2bB { font: 800 11px Inter, sans-serif; fill: #8E0C22; }
+          .f2bA { font: 700 11px Inter, sans-serif; fill: #C8102E; }
+          .f2bN { font: 400 12px Inter, sans-serif; fill: #5F4D50; }
+        </style>
+
+        <text class="f2bH" x="30" y="26">THE EVEN-ODD RULE ON A NOTCHED SQUARE, AND A CENTROID THAT LEAVES HOME</text>
+
+        <g filter="url(#f2bSk)" fill="none" stroke="#1C1214" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="40" y="50" width="430" height="230" rx="10" transform="rotate(-0.3 255 165)" fill="#FFFFFF"/>
+          <rect x="490" y="50" width="350" height="230" rx="10" transform="rotate(0.4 665 165)" fill="#FDF0F1"/>
+          <path d="M70 90 L290 90 L290 155 L200 155 L200 195 L290 195 L290 250 L70 250 Z" fill="#FDF0F1"/>
+          <circle cx="130" cy="172" r="5" fill="#1C1214"/>
+          <path d="M124 172 L54 172" stroke-dasharray="5 4" marker-end="url(#f2bAr)"/>
+          <circle cx="245" cy="175" r="5" fill="#1C1214"/>
+          <path d="M245 169 L245 78" stroke-dasharray="5 4" marker-end="url(#f2bAr)"/>
+          <path d="M560 92 L760 92 L760 132 L610 132 L610 200 L760 200 L760 240 L560 240 Z" fill="#FFFFFF"/>
+          <circle cx="647" cy="166" r="6" fill="#EF3340"/>
+          <circle cx="826" cy="24" r="6" stroke-width="1.6"/>
+          <path d="M826 30 L826 42" stroke-width="1.6"/>
+        </g>
+
+        <text class="f2bA" x="54" y="72">EVEN-ODD: COUNT THE CROSSINGS ON ANY RAY</text>
+        <text class="f2bL" x="84" y="122">A · 1 crossing · inside</text>
+        <text class="f2bB" x="56" y="165">1</text>
+        <text class="f2bB" x="252" y="150">1</text>
+        <text class="f2bB" x="252" y="86">2</text>
+        <text class="f2bS" x="300" y="179">B · 2 crossings · outside</text>
+        <text class="f2bS" x="54" y="270">odd = inside, even = outside, whichever way the ray goes</text>
+
+        <text class="f2bA" x="504" y="72">A CONCAVE SHAPE AND ITS CENTROID</text>
+        <text class="f2bS" x="570" y="116">this subzone</text>
+        <text class="f2bL" x="660" y="162">centroid</text>
+        <text class="f2bS" x="660" y="178">outside its own shape</text>
+        <text class="f2bS" x="504" y="262">the centroid lands in the gap: a join placed there</text>
+        <text class="f2bS" x="504" y="276">answers for the neighbour, not for this zone</text>
+
+        <text class="f2bN" x="30" y="312">Holes come free: a point inside a hole crosses the hole's ring once more, so odd becomes even and it is outside.</text>
+      </svg>
+      <figcaption>🔍 Click to zoom - B's ray goes north and A's goes west on purpose; the count changes, the parity does not, and that is the whole proof</figcaption>
+    </figure>
+
+    <details class="card">
+      <summary><span class="mode live">Live</span>Count the crossings, by hand first<span class="mini">3 min</span><span class="caret">▶</span></summary>
+      <div class="body">
+        <p>Take the notched square in the figure. Point A sits in the body; its ray west meets the left edge once, one is odd, A is inside. Point B sits in the notch, which is outside the shape even though it is surrounded on three sides; its ray north crosses the notch's top edge and then the square's top edge, two is even, B is outside. Now send B's ray east instead: it crosses nothing, zero is even, same answer. Send A's ray east: it meets the notch's left wall once, same answer again. Any ray, any direction, the parity agrees, and that is why a function can pick the convenient direction (horizontal, to the right) and never think about it again.</p>
+        <p>In code the test for "does this edge cross a horizontal ray to the right of the point" is two lines: the edge's two ends straddle the point's latitude, and the longitude where the edge meets that latitude is to the right of the point. Flip a boolean each time it is true. Run the loop over every ring of every part, holes included, and read the boolean at the end. The real subzone rings are long (the biggest have thousands of corners) but the rule is the same one you just did with a pencil; the build-along runs it over 613 exits and 332 subzones, 203,516 tests, in plain Python.</p>
+      </div>
+    </details>
+
+    <details class="card">
+      <summary><span class="mode self">Self-study</span>Holes for free, and the other rule<span class="mini">3 min</span><span class="caret">▶</span></summary>
+      <div class="body">
+        <p>A point inside a hole is, by the file's meaning, outside the subzone. Even-odd gets this without being told which ring is the hole: the ray from a point in the hole crosses the hole's ring once and the outer ring once, two is even, outside. A point in the solid part crosses only the outer ring, one, inside. So "sum the crossings over all rings and take the parity" is the whole algorithm, and it is why the engine behind session 6 runs even-odd over every ring and tests itself on a notched square and a square with a hole at every load.</p>
+        <p>The SVG specification names a second rule, <code>nonzero</code>: add one for an edge crossing the ray left to right, subtract one for right to left, and call zero outside. It gives the same answer as even-odd on well-formed rings whose holes are wound the opposite way to their outer ring, and a different answer on self-overlapping shapes, where even-odd leaves the overlap empty and nonzero fills it. GeoJSON polygons are supposed to be simple and non-overlapping, so the two agree on this file; even-odd is taught first because it asks nothing about winding direction, and the direction a ring was digitised in is exactly the kind of fact a file does not tell you.</p>
+      </div>
+    </details>
+
+    <details class="card">
+      <summary><span class="mode self">Self-study</span>Why a centroid can fall outside its own shape<span class="mini">3 min</span><span class="caret">▶</span></summary>
+      <div class="body">
+        <p>The centroid Mei will use in session 3 is the area-weighted planar centroid of all outer rings minus holes, computed in degrees, which is fine at 1 deg N and said so. It is the balance point of the shape, not a point chosen from inside it, and nothing in the arithmetic requires the balance point to lie on the shape. A C-shaped subzone balances in the gap of the C. A MultiPolygon with a mainland part and an islet balances somewhere in the water between. A long thin subzone that bends balances off its own body. When that centroid is then used as "the location of the subzone" for a join or a label, it can land in the neighbour, and the neighbour's name comes back with no error raised.</p>
+        <p>The check is one call to the function you just wrote: <code>inside(cx, cy, geometry)</code> on the shape's own centroid. False is not a bug in the centroid; it is a property of the shape, and the honest response is to record it, use a point known to be inside for labels, and remember in session 5 that "cluster joined to subzone by centroid" is a decision with this edge in it.</p>
+      </div>
+    </details>
+
+    <div class="callout tip">
+      <p><strong>Test the function on shapes you can draw.</strong> Before the real rings, run <code>inside</code> on a notched square and a square with a hole and assert the four answers you can see on paper. A point-in-polygon bug on a 4,000-corner ring produces a plausible wrong zone; the same bug on a five-corner square produces an assertion error with a line number.</p>
+    </div>
+  </section>
+
+  <section class="section" id="part-3">
+    <div class="section-kicker">
+      <span class="klabel">Part 3 · covers simplification and the boundary as a decision</span>
+      <h2>The shape you draw and the layer you pick</h2>
+      <span class="tag concept">5 min live</span>
+    </div>
+    <p class="lede">Rivermont is constructed; the two things that move its counts are real. The first is simplification. A boundary drawn for a web page cannot carry 58,530 corners, so the engine behind session 6 runs the Douglas-Peucker algorithm at a tolerance of 0.0003 degrees, about 33 m at this latitude, and keeps 5,326 vertices, dropping 22 degenerate rings that were tiny islets or slivers, and rounding what is left to 0.00001 degrees. Of the 613 exits, 608 then fall inside exactly one subzone, 3 fall outside every simplified boundary, and 2 fall in two, where neighbouring simplified rings overlap by a sliver. The second is the layer. The same exits counted by planning area give 55 numbers instead of 332, and an estate's "exits nearby" can change without a single exit moving.</p>
+
+    <figure class="zoomable">
+      <svg viewBox="0 0 880 340" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Two panels. Left: a subzone drawn twice, the simplified ring in ink as a straight diagonal edge and the raw ring in grey wiggling along it about 33 metres each way; a flag-red exit sits between the two lines, inside the raw ring and outside the simplified one, with the caption that 3 of 613 exits do this. The heading says simplified at 0.0003 degrees, 58,530 vertices to 5,326. Right: one planning-area box divided into subzones A, B and C by two vertical lines, with one exit in A; by subzone there are 332 counts and the exit belongs to A, by planning area there are 55 counts and A, B and C are one number.">
+        <defs>
+          <filter id="f2cSk" x="-3%" y="-3%" width="106%" height="106%"><feTurbulence type="fractalNoise" baseFrequency="0.02" numOctaves="2" seed="77" result="n"/><feDisplacementMap in="SourceGraphic" in2="n" scale="2.4" xChannelSelector="R" yChannelSelector="G"/></filter>
+          <pattern id="f2cHc" patternUnits="userSpaceOnUse" width="7" height="7" patternTransform="rotate(-38)"><line x1="0" y1="0" x2="0" y2="7" stroke="#C8102E" stroke-width="1" opacity=".5"/></pattern>
+        </defs>
+        <style>
+          .f2cH { font: 800 12px Inter, sans-serif; fill: #1C1214; }
+          .f2cL { font: 600 12px Inter, sans-serif; fill: #1C1214; }
+          .f2cS { font: 400 11px Inter, sans-serif; fill: #5F4D50; }
+          .f2cB { font: 800 11px Inter, sans-serif; fill: #8E0C22; }
+          .f2cA { font: 700 11px Inter, sans-serif; fill: #C8102E; }
+          .f2cN { font: 400 12px Inter, sans-serif; fill: #5F4D50; }
+        </style>
+
+        <text class="f2cH" x="30" y="26">TWO THINGS THAT MOVE A COUNT WITHOUT MOVING A POINT</text>
+
+        <g filter="url(#f2cSk)" fill="none" stroke="#1C1214" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="40" y="50" width="400" height="240" rx="10" transform="rotate(0.3 240 170)" fill="#FFFFFF"/>
+          <rect x="460" y="50" width="380" height="240" rx="10" transform="rotate(-0.4 650 170)" fill="#FFFFFF"/>
+          <path d="M70 100 L380 100 L380 150 L300 250 L70 250 Z" fill="#FDF0F1"/>
+          <path d="M380 150 L366 162 L384 176 L356 184 L372 198 L340 206 L358 222 L326 228 L336 242 L300 250" stroke="#5F4D50" stroke-width="1.2"/>
+          <circle cx="368" cy="176" r="5" fill="#EF3340"/>
+          <path d="M330 120 Q336 110 342 120 Q348 130 354 120" stroke-width="1.4"/>
+          <rect x="480" y="100" width="340" height="145" rx="6" transform="rotate(0.3 650 172)" fill="#FDF0F1"/>
+          <path d="M600 100 L600 245 M700 100 L700 245" stroke-width="1.4"/>
+          <rect x="482" y="102" width="116" height="141" fill="url(#f2cHc)" stroke="none"/>
+          <circle cx="560" cy="170" r="5" fill="#EF3340"/>
+        </g>
+
+        <text class="f2cA" x="54" y="72">SIMPLIFIED AT 0.0003 DEG: 58,530 VERTICES TO 5,326</text>
+        <text class="f2cL" x="96" y="126">ink: the simplified ring</text>
+        <text class="f2cS" x="96" y="144">grey: the raw ring, about 33 m of wiggle</text>
+        <text class="f2cS" x="54" y="270">red dot: in the raw ring, out of the simplified (3 of 613)</text>
+
+        <text class="f2cA" x="474" y="72">SAME EXIT, TWO BOUNDARY LAYERS, TWO COUNTS</text>
+        <text class="f2cL" x="486" y="92">planning area, one of 55</text>
+        <text class="f2cS" x="522" y="164">exit</text>
+        <text class="f2cL" x="540" y="232" text-anchor="middle">subzone A</text>
+        <text class="f2cL" x="650" y="232" text-anchor="middle">subzone B</text>
+        <text class="f2cL" x="760" y="232" text-anchor="middle">subzone C</text>
+        <text class="f2cS" x="474" y="262">by subzone: 332 counts, this exit belongs to A</text>
+        <text class="f2cS" x="474" y="277">by planning area: 55 counts, A, B and C are one number</text>
+
+        <text class="f2cN" x="30" y="322">Simplification moves 5 exits of 613 (3 to nowhere, 2 to two zones). Changing the layer changes every count.</text>
+      </svg>
+      <figcaption>🔍 Click to zoom - the left panel is a drawing decision, the right panel is a question decision; neither is a data error, both change Arif's table</figcaption>
+    </figure>
+    <p class="mono">Contains information from Master Plan 2019 Subzone Boundary (No Sea) (GEOJSON) accessed on 2026-10-22 from data.gov.sg which is made available under the terms of the Singapore Open Data Licence version 1.0 https://data.gov.sg/open-data-licence. Contains information from LTA MRT Station Exit (GEOJSON) accessed on 2026-10-22 from data.gov.sg which is made available under the terms of the Singapore Open Data Licence version 1.0 https://data.gov.sg/open-data-licence</p>
+
+    <details class="card">
+      <summary><span class="mode live">Live</span>What simplification does to an exit near the edge<span class="mini">3 min</span><span class="caret">▶</span></summary>
+      <div class="body">
+        <p>Douglas-Peucker keeps the two ends of a ring, finds the corner farthest from the straight line between them, keeps it if it is farther than the tolerance, and recurses on each half. At 0.0003 degrees it throws away every wiggle smaller than about 33 m, and the 58,530 corners become 5,326: a 91% cut that leaves the map looking the same on a screen. The raw ring and the simplified ring disagree only in a band about 33 m wide along every edge, and the exits that live in that band are the ones that move. On this file that is five of 613: three end up outside every simplified subzone, usually an exit on a shoreline or a boundary road that the straightened line now passes on the wrong side of, and two end up inside two subzones at once, because two neighbours simplified independently can overlap by a sliver where the raw rings shared an edge exactly.</p>
+        <p>None of this is wrong. The simplified layer exists so a page can draw it; the session 6 bench says on the widget that it is working at five decimals and about 33 m. The mistake would be to publish a count from the drawing layer and call it the count. The desk's rule is that counts come from the raw rings and the drawing layer draws; when the two must differ, the page says by how much, which is what the 608, 3 and 2 are for.</p>
+      </div>
+    </details>
+
+    <details class="card">
+      <summary><span class="mode self">Self-study</span>The boundary is a decision, and it has a name<span class="mini">4 min</span><span class="caret">▶</span></summary>
+      <div class="body">
+        <p>Arif's "exits near our estate" has no answer until somebody picks the shape that "near" means. Count by subzone and there are 332 numbers; count by planning area and there are 55, each the sum of its subzones; draw a 500 m circle around the estate instead and the boundary file is not even used. The same 613 points, three honest counts, and the one Priya puts on a slide depends on which layer the analyst reached for. URA's own page says the subzones are indicative and may not match existing developments, which is a reminder that the layer was drawn for planning, not for the question being asked tonight. Write the layer next to the count, every time: "exits per subzone, URA MP2019 raw rings, counted 2026-10-22" is a number; "exits: 4" is not.</p>
+        <p>The general fact that a count or a rate changes with the zoning scheme it is aggregated into has a name, the modifiable areal unit problem, set out by Openshaw (1984, reported). How deep it goes, how it interacts with where sensors are placed, and what it does to a rate map are taught next door in Smart City; the mechanism you need tonight is the right-hand panel of the figure, and the depth is at <a href="https://phoebefu6.github.io/learn-smart-city-with-phoebe/courses/p2-zones-joins-and-the-map.html">learn-smart-city, zones, joins and the map</a>.</p>
+      </div>
+    </details>
+
+    <div class="callout example">
+      <span class="ex-pill">Real world</span>
+      <p><strong>Two true counts (constructed).</strong> At Rivermont, Arif brings Mei a planning slide that says one number of MRT exits serves the estate, and Mei's table says another. Neither is wrong. The slide counted by planning area, which pulls in exits across a canal that nobody from the estate uses; Mei counted by subzone, which stops at a road the estate's residents cross every morning. Priya's question, "which is right", gets the answer the desk now gives to every count: "right for which boundary", and the boundary goes on the slide in the same font size as the number.</p>
+    </div>
+  </section>
+
+  <section class="section" id="demo-1">
+    <div class="section-kicker">
+      <span class="klabel">Build-along</span>
+      <h2>Exits per subzone, three ways</h2>
+      <span class="tag demo">★ 22 min · everyone builds</span>
+    </div>
+    <p class="lede">Rivermont is constructed; the files are the real ones. Mei has both downloads in her empty data folder from session 1: the URA subzone file <code>d_8594ae9ff96d0c708bc2af633048edfb</code> and the LTA exits file <code>d_b39d3a0871985372d7e1637193335da5</code>. She counts what the subzone file holds, writes the even-odd test and proves it on paper shapes, then counts exits per subzone on the raw rings (way 1), on rings she simplifies herself (way 2), and regrouped by planning area (way 3). Where an output below is printed, it is the real one from the files of 2026-10-22; where it says "your numbers will differ", the exact value is yours to record, because it depends on your download date and your tolerance.</p>
+
+    <figure class="zoomable">
+      <svg viewBox="0 0 880 300" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="A flow drawn as boxes. At the top, the exits file with 613 points. An arrow leads down to a flag-red box, the even-odd test over every ring, odd inside, even outside. From it three arrows fan out to three boxes: way 1, raw subzone rings, 332 counts from 203,516 tests, the desk's answer; way 2, simplified rings, 5,326 vertices instead of 58,530, a few exits move zone; way 3, planning areas, 55 counts from the same 613 exits, the boundary is a choice.">
+        <defs>
+          <filter id="f2dSk" x="-3%" y="-3%" width="106%" height="106%"><feTurbulence type="fractalNoise" baseFrequency="0.02" numOctaves="2" seed="89" result="n"/><feDisplacementMap in="SourceGraphic" in2="n" scale="2.4" xChannelSelector="R" yChannelSelector="G"/></filter>
+          <marker id="f2dAr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M1 1 L9 5 L1 9" fill="none" stroke="#1C1214" stroke-width="1.6" stroke-linecap="round"/></marker>
+        </defs>
+        <style>
+          .f2dH { font: 800 12px Inter, sans-serif; fill: #1C1214; }
+          .f2dL { font: 600 12px Inter, sans-serif; fill: #1C1214; }
+          .f2dS { font: 400 11px Inter, sans-serif; fill: #5F4D50; }
+          .f2dB { font: 800 11px Inter, sans-serif; fill: #8E0C22; }
+          .f2dN { font: 400 12px Inter, sans-serif; fill: #5F4D50; }
+        </style>
+
+        <text class="f2dH" x="30" y="26">ONE RULE, THREE BOUNDARIES, THREE TABLES</text>
+
+        <g filter="url(#f2dSk)" fill="none" stroke="#1C1214" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="340" y="46" width="200" height="34" rx="8" transform="rotate(-0.5 440 63)" fill="#FFFFFF"/>
+          <path d="M440 82 L440 104" marker-end="url(#f2dAr)"/>
+          <rect x="340" y="106" width="200" height="44" rx="10" transform="rotate(0.6 440 128)" fill="#EF3340"/>
+          <path d="M440 152 L440 184" marker-end="url(#f2dAr)"/>
+          <path d="M420 150 C300 150 160 160 160 184" marker-end="url(#f2dAr)"/>
+          <path d="M460 150 C580 150 720 160 720 184" marker-end="url(#f2dAr)"/>
+          <rect x="60" y="186" width="200" height="72" rx="10" transform="rotate(-0.7 160 222)" fill="#FFFFFF"/>
+          <rect x="340" y="186" width="200" height="72" rx="10" transform="rotate(0.5 440 222)" fill="#FDF0F1"/>
+          <rect x="620" y="186" width="200" height="72" rx="10" transform="rotate(-0.6 720 222)" fill="#FFFFFF"/>
+          <path d="M836 60 Q842 50 848 60 Q854 70 860 60" stroke-width="1.4"/>
+        </g>
+
+        <text class="f2dL" x="440" y="67" text-anchor="middle">exits file: 613 points</text>
+        <text class="f2dL" x="440" y="124" text-anchor="middle">even-odd over every ring</text>
+        <text class="f2dL" x="440" y="141" text-anchor="middle">odd inside, even outside</text>
+
+        <text class="f2dL" x="160" y="210" text-anchor="middle">way 1 · raw rings</text>
+        <text class="f2dS" x="160" y="228" text-anchor="middle">332 counts, 203,516 tests</text>
+        <text class="f2dB" x="160" y="246" text-anchor="middle">the desk's answer</text>
+        <text class="f2dL" x="440" y="210" text-anchor="middle">way 2 · simplified rings</text>
+        <text class="f2dS" x="440" y="228" text-anchor="middle">5,326 vertices, not 58,530</text>
+        <text class="f2dB" x="440" y="246" text-anchor="middle">a few exits move zone</text>
+        <text class="f2dL" x="720" y="210" text-anchor="middle">way 3 · planning areas</text>
+        <text class="f2dS" x="720" y="228" text-anchor="middle">55 counts, same 613 exits</text>
+        <text class="f2dB" x="720" y="246" text-anchor="middle">the boundary is a choice</text>
+
+        <text class="f2dN" x="30" y="284">Way 1 is the answer. Way 2 shows what drawing did to it. Way 3 shows that the question picked the boundary.</text>
+      </svg>
+      <figcaption>🔍 Click to zoom - the red box never changes between the three ways; only the rings handed to it do, and that is the point</figcaption>
+    </figure>
+    <p class="mono">Contains information from Master Plan 2019 Subzone Boundary (No Sea) (GEOJSON) accessed on 2026-10-22 from data.gov.sg which is made available under the terms of the Singapore Open Data Licence version 1.0 https://data.gov.sg/open-data-licence. Contains information from LTA MRT Station Exit (GEOJSON) accessed on 2026-10-22 from data.gov.sg which is made available under the terms of the Singapore Open Data Licence version 1.0 https://data.gov.sg/open-data-licence</p>
+
+    <div class="steps">
+      <div class="step">
+        <p><strong>Count what the subzone file holds.</strong> Same habit as session 1: the script lives outside the download folder and runs with <code>-I</code>. Every count below is printed, not assumed, and the vertex total includes each ring's closing point because the file does.</p>
+        <div class="prompt-box good"><span class="label">★ Step 1 · open and count</span>import json, sys, math
+f = json.load(open(sys.argv[1], encoding="utf-8"))          # the URA subzone file
+feats = f["features"]
+
+def parts_of(geom):                                          # a Polygon is one part; a MultiPolygon is many
+    return [geom["coordinates"]] if geom["type"] == "Polygon" else geom["coordinates"]
+
+types, rings, holes, verts = {}, 0, 0, 0
+for p in feats:
+    g = p["geometry"]; types[g["type"]] = types.get(g["type"], 0) + 1
+    for part in parts_of(g):
+        rings += len(part); holes += len(part) - 1         # ring 0 is the outer edge, the rest are holes
+        verts += sum(len(r) for r in part)
+print(len(feats), types)
+print(rings, "rings", holes, "holes", verts, "vertices")
+print(len({p["properties"]["PLN_AREA_N"] for p in feats}), "planning areas",
+      len({p["properties"]["REGION_N"] for p in feats}), "regions",
+      sum(p["properties"]["CA_IND"] == "Y" for p in feats), "in the Central Area")
+print(f.get("crs"))
+
+# run:  python3 -I count_subzones.py downloads/d_8594ae9ff96d0c708bc2af633048edfb.geojson
+# 332 {'Polygon': 321, 'MultiPolygon': 11}
+# 374 rings 13 holes 58530 vertices
+# 55 planning areas 5 regions 50 in the Central Area
+# None</div>
+      </div>
+      <div class="step">
+        <p><strong>Write the even-odd test and prove it on paper shapes.</strong> One ring at a time: an edge counts when its two ends straddle the point's latitude and the edge meets that latitude to the right of the point. Sum over every ring of every part and take the parity. The asserts are the notched square and the square with a hole from Part 2; run them before any real ring.</p>
+        <div class="prompt-box good"><span class="label">★ Step 2 · inside()</span>def crosses(x, y, ring):                      # even-odd on one closed ring, ray to the east
+    c = False
+    for i in range(len(ring) - 1):
+        (x1, y1), (x2, y2) = ring[i][:2], ring[i + 1][:2]
+        if (y1 &gt; y) != (y2 &gt; y):                     # the edge straddles the point's latitude
+            if x &lt; x1 + (y - y1) * (x2 - x1) / (y2 - y1):   # and meets it to the right of the point
+                c = not c
+    return c
+
+def inside(x, y, geom):                        # every ring of every part, holes included
+    return sum(crosses(x, y, r) for part in parts_of(geom) for r in part) % 2 == 1
+
+notch = {"type": "Polygon", "coordinates": [[(0,0),(10,0),(10,4),(6,4),(6,6),(10,6),(10,10),(0,10),(0,0)]]}
+holed = {"type": "Polygon", "coordinates": [[(0,0),(10,0),(10,10),(0,10),(0,0)], [(3,3),(7,3),(7,7),(3,7),(3,3)]]}
+assert inside(3, 5, notch) and not inside(8, 5, notch)     # A in the body, B in the notch
+assert inside(1, 1, holed) and not inside(5, 5, holed)     # the corner, and the hole
+print("paper shapes pass")                                   # paper shapes pass</div>
+      </div>
+      <div class="step">
+        <p><strong>Way 1: count on the raw rings.</strong> Every exit against every subzone is 613 x 332 = 203,516 ring-walks, which takes a while in plain Python and is fine for tonight; session 4 is about not doing that. Keep the list of hits per exit, not just the counts, because the interesting rows are the ones with zero or two hits. The raw-ring tallies are yours to record: the only published counts in the map are for the simplified layer in step 4.</p>
+        <div class="prompt-box good"><span class="label">★ Step 3 · way 1, raw rings</span>exits = json.load(open(sys.argv[2], encoding="utf-8"))["features"]    # the LTA exits file, 613 points
+names = [p["properties"]["SUBZONE_N"] for p in feats]
+hits_raw = []
+for e in exits:
+    x, y = e["geometry"]["coordinates"][:2]
+    hits_raw.append([n for n, p in zip(names, feats) if inside(x, y, p["geometry"])])
+
+count_raw = {n: 0 for n in names}
+for hs in hits_raw:
+    for n in hs: count_raw[n] += 1
+
+print(len(exits) * len(feats), "tests")                                  # 203516 tests
+print(sum(len(h) == 1 for h in hits_raw), "in exactly one subzone,",
+      sum(len(h) == 0 for h in hits_raw), "in none,",
+      sum(len(h) &gt; 1 for h in hits_raw), "in two or more")             # your numbers will differ: record them
+for n, k in sorted(count_raw.items(), key=lambda kv: -kv[1])[:5]:
+    print(f"{n:&lt;24} {k}")                                               # your numbers will differ</div>
+      </div>
+      <div class="step">
+        <p><strong>Way 2: simplify the rings yourself and count again.</strong> Douglas-Peucker in a dozen lines: keep the ends, keep the farthest corner if it is beyond the tolerance, recurse. A ring left with fewer than four points encloses nothing and is dropped. Compare the hit lists exit by exit; the ones that change are the exits in the 33 m band. Your vertex total will not be exactly 5,326, because the engine also rounds to 0.00001 degrees and treats degenerate rings its own way; it should be the same order of size.</p>
+        <div class="prompt-box good"><span class="label">★ Step 4 · way 2, simplified rings</span>def dp(ring, tol):                                          # Douglas-Peucker on one ring
+    if len(ring) &lt; 3: return ring
+    (x1, y1), (x2, y2) = ring[0][:2], ring[-1][:2]
+    dx, dy = x2 - x1, y2 - y1
+    best, idx = 0.0, 0
+    for i in range(1, len(ring) - 1):
+        x, y = ring[i][:2]
+        if dx == 0 and dy == 0: d = math.hypot(x - x1, y - y1)   # closed ring: ends coincide
+        else:
+            t = max(0.0, min(1.0, ((x - x1) * dx + (y - y1) * dy) / (dx * dx + dy * dy)))
+            d = math.hypot(x - (x1 + t * dx), y - (y1 + t * dy))
+        if d &gt; best: best, idx = d, i
+    if best &lt;= tol: return [ring[0], ring[-1]]
+    return dp(ring[:idx + 1], tol)[:-1] + dp(ring[idx:], tol)
+
+def simplify(geom, tol=0.0003):                              # about 33 m at 1 deg N
+    out = []
+    for part in parts_of(geom):
+        rs = [r for r in (dp(r, tol) for r in part) if len(r) &gt;= 4]   # a ring needs three distinct corners
+        if rs: out.append(rs)
+    return {"type": "MultiPolygon", "coordinates": out}
+
+simple = [simplify(p["geometry"]) for p in feats]
+print(sum(len(r) for g in simple for part in g["coordinates"] for r in part), "vertices after")   # your number; the engine's run keeps 5,326
+
+moved = 0
+for e, hs in zip(exits, hits_raw):
+    x, y = e["geometry"]["coordinates"][:2]
+    hs2 = [n for n, g in zip(names, simple) if inside(x, y, g)]
+    if hs2 != hs:
+        moved += 1
+        print(e["properties"]["STATION_NA"], e["properties"]["EXIT_CODE"], hs, "-&gt;", hs2)
+print(moved, "exits changed zone")        # your number will differ; on the engine's layer 3 land in none and 2 in two</div>
+      </div>
+      <div class="step">
+        <p><strong>Way 3: regroup by planning area.</strong> No new geometry: each subzone already carries PLN_AREA_N, so the planning-area count is the subzone counts summed by that attribute. 55 rows instead of 332, built from the same 613 exits. Print both tables with their layer in the heading; that heading is the lesson.</p>
+        <div class="prompt-box good"><span class="label">★ Step 5 · way 3, planning areas</span>count_area = {}
+for n, p in zip(names, feats):
+    a = p["properties"]["PLN_AREA_N"]
+    count_area[a] = count_area.get(a, 0) + count_raw[n]
+
+print(len(count_raw), "subzone rows;", len(count_area), "planning-area rows; same", len(exits), "exits")
+# 332 subzone rows; 55 planning-area rows; same 613 exits
+
+print("exits per planning area, URA MP2019 raw rings, counted 2026-10-22")
+for a, k in sorted(count_area.items(), key=lambda kv: -kv[1])[:5]:
+    print(f"{a:&lt;24} {k}")                                   # your numbers will differ</div>
+      </div>
+    </div>
+
+    <div class="callout tip">
+      <p><strong>Write the layer in the heading, not the footnote.</strong> Mei's two tables go to Arif with "raw rings, by subzone" and "raw rings, by planning area" in the title row. The simplified-layer table is kept for the page that draws the map and is never the one quoted. Six months from now the only way anyone will know which boundary a number used is that the number said so.</p>
+    </div>
+  </section>
+
+  <section class="section" id="exercise">
+    <div class="section-kicker">
+      <span class="klabel">Homework</span>
+      <h2>Before session 3</h2>
+      <span class="tag exercise">30 min</span>
+    </div>
+    <ol>
+      <li><strong>Pick one MultiPolygon subzone</strong> from the 11 and print how many parts it has, how many rings each part has, and the first and last coordinate of its outer ring. Confirm by eye that they are the same pair.</li>
+      <li><strong>Draw a shape with a notch and a hole on paper</strong>, put four points in it (body, notch, hole, outside), and run the even-odd rule with a pencil in two different ray directions. Then encode the shape as a ring list and check <code>inside</code> agrees with your pencil on all four.</li>
+      <li><strong>Find a subzone whose centroid falls outside itself.</strong> Compute the area-weighted centroid of each subzone (the shoelace formula over the outer rings, holes subtracted) and call <code>inside</code> on it. List the subzones that return False; session 3 measures distances from exactly these centroids.</li>
+      <li><strong>Rerun way 2 at 0.001 and at 0.0001 degrees</strong> and record how many exits change zone at each tolerance. Write one sentence under the table saying what the tolerance is: a decision about drawing, with a measurable cost in moved points.</li>
+    </ol>
+  </section>
+
+  <section class="section" id="quiz">
+    <div class="section-kicker">
+      <span class="klabel">Check yourself</span>
+      <h2>Three questions</h2>
+    </div>
+    <p>Clear all three and session 2 gets stamped in your passport.</p>
+
+    <div class="quiz-q" data-answer="1">
+      <p class="qtext">1 · A subzone consists of a mainland part and a small islet with sea between. How does the URA file store it?</p>
+      <button class="qopt" type="button">A · As two rows with the same SUBZONE_N, one per piece</button>
+      <button class="qopt" type="button">B · As one MultiPolygon row whose coordinates hold two parts, each an outer ring with zero or more holes</button>
+      <button class="qopt" type="button">C · As one Polygon whose second ring is the islet</button>
+      <button class="qopt" type="button">D · As a Polygon for the mainland and a Point for the islet</button>
+      <p class="qwhy">The file has 332 rows for 332 subzones and 11 of them are MultiPolygon, one row with several parts. A second ring inside a Polygon is a hole, not a separate piece, so C would cut the islet out of the subzone rather than add it; A and D invent a second row the file does not have.</p>
+    </div>
+
+    <div class="quiz-q" data-answer="3">
+      <p class="qtext">2 · A point sits inside a hole of a subzone polygon. A ray from it going east crosses the hole's ring once and the outer ring once. What does the even-odd rule say?</p>
+      <button class="qopt" type="button">A · Inside, because the point is surrounded by the subzone on every side</button>
+      <button class="qopt" type="button">B · The rule cannot decide; holes need a separate test</button>
+      <button class="qopt" type="button">C · Inside, because the outer ring was crossed</button>
+      <button class="qopt" type="button">D · Outside: two crossings is an even number, and a hole is not part of the subzone</button>
+      <p class="qwhy">Sum the crossings over every ring and take the parity: one plus one is two, even, outside, which is what the file means by a hole. No special case is needed, which is why the rule is run over all rings. A describes how the point looks on a map, not what the geometry says.</p>
+    </div>
+
+    <div class="quiz-q" data-answer="0">
+      <p class="qtext">3 · Mei counts the 613 exits by subzone and again by planning area, and an estate's "nearby exits" number changes. No exit moved. What happened?</p>
+      <button class="qopt" type="button">A · The same points were aggregated into a different boundary layer; the count depends on the layer, and the layer is a choice that belongs next to the number</button>
+      <button class="qopt" type="button">B · Planning areas are stored in SVY21 metres, so the points were misplaced</button>
+      <button class="qopt" type="button">C · The exits file was updated between the two runs</button>
+      <button class="qopt" type="button">D · The even-odd rule fails on polygons larger than a subzone</button>
+      <p class="qwhy">Both layers are in the same file and the same degrees; the rule does not care about size; and the exits did not change. What changed is the shape the question was poured into. That dependence has a name, the modifiable areal unit problem, and its depth is taught in Smart City.</p>
+    </div>
+
+    <p class="quiz-score"></p>
+  </section>
+
+  <section class="section" id="official">
+    <div class="section-kicker">
+      <span class="klabel">Sources covered</span>
+      <h2>What this session teaches, and where it came from</h2>
+    </div>
+    <div class="covered">
+      <div class="covered-row"><span class="status pill solid">✓</span><span class="name">Urban Redevelopment Authority. Master Plan 2019 Subzone Boundary (No Sea) (GEOJSON). data.gov.sg dataset d_8594ae9ff96d0c708bc2af633048edfb, last updated 2025-12-03, accessed 2026-10-22</span><span class="note">Counted in the file: 332 features (321 Polygon, 11 MultiPolygon), 374 rings of which 13 are holes, 58,530 vertices, 55 planning areas, 5 regions, CA_IND = Y on 50; no crs member. Page text read: "indicative polygon", "may not coincide with existing developments". Singapore Open Data Licence v1.0</span></div>
+      <div class="covered-row"><span class="status pill solid">✓</span><span class="name">Land Transport Authority. LTA MRT Station Exit (GEOJSON). data.gov.sg dataset d_b39d3a0871985372d7e1637193335da5, last updated 2026-10-18, accessed 2026-10-22</span><span class="note">613 points, attributes STATION_NA and EXIT_CODE, read in the file. Singapore Open Data Licence v1.0</span></div>
+      <div class="covered-row"><span class="status pill solid">✓</span><span class="name">W3C. Scalable Vector Graphics (SVG) 2, Painting: Filling, Stroking and Marker Symbols, fill-rule</span><span class="note">Even-odd and nonzero definitions read 2026-10-22; the even-odd rule over every ring is the test used on this page and in the session 6 engine</span></div>
+      <div class="covered-row"><span class="status pill solid">✓</span><span class="name">Simplification and point-in-polygon counts</span><span class="note">Computed by the session 6 engine on 2026-10-22 and matched by the Python reference: Douglas-Peucker at 0.0003 deg, 58,530 to 5,326 vertices, 22 degenerate rings dropped, quantised to 0.00001 deg; 613 exits against 332 subzones, 203,516 tests, 608 in one, 3 in none, 2 in two</span></div>
+      <div class="covered-row"><span class="status pill light">◐</span><span class="name">Openshaw, S. (1984). The Modifiable Areal Unit Problem. CATMOG 38. Geo Books, Norwich</span><span class="note">Reported, not read at source; one line on this page, depth linked to learn-smart-city</span></div>
+      <div class="covered-row"><span class="status pill light">◐</span><span class="name">Rivermont, Mei, Arif and Priya</span><span class="note">Constructed for teaching; no number about them is a measurement</span></div>
+    </div>
+    <p class="mono" style="margin-top:14px">Every fact on this page, and its verification tier, is recorded in the course's source map.</p>
+  </section>
+
+  <section class="cheat" id="cheatsheet">
+    <h3>Session 2 cheat sheet <span>· pin this</span></h3>
+    <div class="grid-2">
+      <div class="cheat-item"><b>The vocabulary</b><span>Ring = closed list of corners, last repeats first. Polygon = outer ring + holes. MultiPolygon = list of those. A hole is a ring too.</span></div>
+      <div class="cheat-item"><b>The file</b><span>332 subzones (321 Polygon, 11 MultiPolygon), 374 rings, 13 holes, 58,530 vertices, 55 planning areas, 5 regions. Count it; never copy it.</span></div>
+      <div class="cheat-item"><b>Even-odd</b><span>Ray from the point, any direction; count the edges crossed over every ring. Odd = inside, even = outside. Holes need no special case.</span></div>
+      <div class="cheat-item"><b>Test on paper shapes</b><span>A notched square and a square with a hole, four asserts, before any real ring. A centroid can fall outside its own shape; check it with inside().</span></div>
+      <div class="cheat-item"><b>Simplification</b><span>Douglas-Peucker at 0.0003 deg (about 33 m) keeps 5,326 of 58,530 corners and moves 5 exits of 613. Draw from it; never count from it.</span></div>
+      <div class="cheat-item"><b>The layer is a choice</b><span>Same 613 exits: 332 counts by subzone, 55 by planning area. Write the layer in the heading of every count.</span></div>
+    </div>
+  </section>
+
+  <div class="callout next">
+    <span class="nx-pill">Next session</span>
+    <p>Mei can now say which subzone an exit is in. Session 3 asks how far: the distance from each of the 332 subzone centroids to its nearest exit, computed three ways. Raw degrees with one constant, haversine on a sphere, and SVY21 metres, with the real errors at 1 deg N and what happens to the same points at 60 deg N.</p>
+  </div>
+
+  <footer class="pagefoot">
+    <span>Session 2 of 6 · learn-geospatial-with-phoebe · by Phoebe Fu &nbsp;·&nbsp; 📚 <a href="https://phoebefu6.github.io/learn-with-phoebe/">Learn with Phoebe ↗</a></span>
+    <span><a href="01-where-is-this-row.html">← Prev: Where is this row?</a> &nbsp;·&nbsp; <a href="03-distance-three-ways.html">Next: Distance three ways →</a></span>
+  </footer>
+
+</main>
+
+<script src="../assets/app.js?v=1"></script>
+</body>
+</html>
